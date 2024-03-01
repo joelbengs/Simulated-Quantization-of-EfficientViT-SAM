@@ -11,6 +11,8 @@ from efficientvit.models.efficientvit import (
     efficientvit_cls_l1,
     efficientvit_cls_l2,
     efficientvit_cls_l3,
+    ## quantized import ##
+    efficientvit_cls_b1_quant,
 )
 from efficientvit.models.nn.norm import set_norm_eps
 from efficientvit.models.utils import load_state_dict_from_file
@@ -46,9 +48,15 @@ REGISTERED_CLS_MODEL: dict[str, str] = {
     "l3-r288": "assets/checkpoints/cls/l3-r288.pt",
     "l3-r320": "assets/checkpoints/cls/l3-r320.pt",
     "l3-r384": "assets/checkpoints/cls/l3-r384.pt",
+    ###### quantized models use same weights ######
+    "b1_quant-r224": "assets/checkpoints/cls/b1-r224.pt",
 }
 
-
+# Function that
+# 1. Fetches a model of class EfficientViTCls
+# 2. Fetches pretrained weights
+# 3. Tells model to load the weights
+# 4. Returns the ready pretrained model
 def create_cls_model(name: str, pretrained=True, weight_url: str or None = None, **kwargs) -> EfficientViTCls:
     model_dict = {
         "b0": efficientvit_cls_b0,
@@ -59,12 +67,15 @@ def create_cls_model(name: str, pretrained=True, weight_url: str or None = None,
         "l1": efficientvit_cls_l1,
         "l2": efficientvit_cls_l2,
         "l3": efficientvit_cls_l3,
+        #### Quantized models ####
+        "b1_quant": efficientvit_cls_b1_quant,
     }
 
     model_id = name.split("-")[0]
     if model_id not in model_dict:
         raise ValueError(f"Do not find {name} in the model zoo. List of models: {list(model_dict.keys())}")
     else:
+        # Step 2: call efficientvit_cls_b1_quant for model creation
         model = model_dict[model_id](**kwargs)
     if model_id in ["l1", "l2", "l3"]:
         set_norm_eps(model, 1e-7)

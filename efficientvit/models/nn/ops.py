@@ -11,6 +11,10 @@ from efficientvit.models.nn.act import build_act
 from efficientvit.models.nn.norm import build_norm
 from efficientvit.models.utils import get_same_padding, list_sum, resize, val2list, val2tuple
 
+from efficientvit.models.ptq import BIT_TYPE_DICT
+from efficientvit.models.ptq.observer import build_observer
+from efficientvit.models.ptq.quantizer import build_quantizer
+
 __all__ = [
     "ConvLayer",
     "UpSampleLayer",
@@ -25,6 +29,8 @@ __all__ = [
     "ResidualBlock",
     "DAGBlock",
     "OpSequential",
+    ## Quantized ops ##
+    "QConvLayer",
 ]
 
 
@@ -559,6 +565,7 @@ class DAGBlock(nn.Module):
         return feature_dict
 
 
+# A pipeline, or a sequence of operations.
 class OpSequential(nn.Module):
     def __init__(self, op_list: list[nn.Module or None]):
         super(OpSequential, self).__init__()
@@ -569,6 +576,106 @@ class OpSequential(nn.Module):
         self.op_list = nn.ModuleList(valid_op_list)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        for op in self.op_list:
-            x = op(x)
+        for op in self.op_list: # each op is a layer in a neural net
+            x = op(x)           # passes x through each layer
+        return x                # returns the final output
+
+
+#################################################################################
+#                          Quantized Basic Layers                               #
+#################################################################################
+
+# Implementaiton inspired by QConv2d from FQ-ViT/models/ptq/layers.py    
+'''
+This one implements nn.Module, while FQViT implements nn.Conv2d. Both should work.
+QConvLayer now manually assigns self.conv = nn.Conv2d to use the convolution implementation from torch.nn.
+This is why ours doesn't pass any arguments to super.__init__(), while FQViT does.
+Weights are stored in self.conv.weight, not self.weight
+'''
+class QConvLayer(nn.Module):
+    def __init__(
+            self,
+            in_channels: int,
+            out_channels: int,
+            kernel_size=3,
+            stride=1,
+            dilation=1,
+            groups=1,
+            use_bias=False,                    # is true in FQvit
+            dropout=0,
+            norm="bn2d",
+            act_func="relu",
+            # custom arguments
+            quant=False,                       # defined at model level
+            calibrate=False,                   # defined at model level
+            last_calibrate=False,              # defined at module level, altered at model level
+            bit_type=BIT_TYPE_DICT['int8'],    # defined at module level
+            calibration_mode='layer_wise',
+            observer_str='minmax',
+            quantizer_str='uniform',):
+        
+        super(QConvLayer, self).__init__()
+        padding = get_same_padding(kernel_size)
+        padding *= dilation
+
+        self.dropout = nn.Dropout2d(dropout, inplace=False) if dropout > 0 else None
+        self.conv = nn.Conv2d(
+            in_channels, # the self.conv.weight tensor gets shape: (out_channels, in_channels, kernel_height, kernel_width).
+            out_channels,
+            kernel_size=(kernel_size, kernel_size),
+            stride=(stride, stride),
+            padding=padding,
+            dilation=(dilation, dilation),
+            groups=groups,
+            bias=use_bias,
+        )
+        self.norm = build_norm(norm, num_features=out_channels)
+        self.act = build_act(act_func)
+
+        # Custom arguments
+        self.quant = quant
+        self.calibrate = calibrate
+        self.last_calibrate = last_calibrate
+        self.bit_type = bit_type
+        self.calibration_mode = calibration_mode
+        self.observer_str = observer_str
+        self.quantizer_str = quantizer_str
+        self.module_type = 'conv_weight'
+        self.observer = build_observer(self.observer_str, self.module_type, 
+                                       self.bit_type, self.calibration_mode)
+        self.quantizer = build_quantizer(self.quantizer_str, self.bit_type, 
+                                          self.observer, self.module_type)
+        print("Hellow world from inside QConvLayer initializer")
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+
+        # calibrate
+        if self.calibrate:
+            self.quantizer.observer.update(self.conv.weight) # for all batches of calibration data: update statistics
+            print("Calibration batch processed in QConv2d")
+            if self.last_calibrate:                          # after the last batch, fetch S and Z of the quantizer
+                self.quantizer.update_quantization_params(x) # maybe x is not needed as argument
+                print("Calibration finished in QConv2d. Scaling point: {}, Zero point: {}".format(self.quantizer.scale, self.quantizer.zero_point))
+
+        # dropput
+        if self.dropout is not None:
+            x = self.dropout(x)
+
+        # quantization
+        if self.quant:
+            # quant + dequant the weights
+            w = self.quantizer(self.conv.weight)
+            # passing the parameters from self.conv to F.conv2d
+            x = F.conv2d(x, w, self.conv.bias, self.conv.stride, self.conv.padding, self.conv.dilation, self.conv.groups)
+        else:
+            x = self.conv(x)
+         
+        # normalization
+        if self.norm:
+            x = self.norm(x) # calls the activation function
+        
+        #activation
+        if self.act:
+            x = self.act(x)
+
         return x
