@@ -645,9 +645,10 @@ class QConvLayer(nn.Module):
                                        self.bit_type, self.calibration_mode)
         self.quantizer = build_quantizer(self.quantizer_str, self.bit_type, 
                                           self.observer, self.module_type)
-        print("Hellow world from inside QConvLayer initializer")
+        print("One QConvLayer built")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        print(f"Forward method called on device {x.device}. calibrate = {self.calibrate}, last_calib = {self.last_calibrate}")
 
         # calibrate
         if self.calibrate:
@@ -655,7 +656,7 @@ class QConvLayer(nn.Module):
             print("Calibration batch processed in QConv2d")
             if self.last_calibrate:                          # after the last batch, fetch S and Z of the quantizer
                 self.quantizer.update_quantization_params(x) # maybe x is not needed as argument
-                print("Calibration finished in QConv2d. Scaling point: {}, Zero point: {}".format(self.quantizer.scale, self.quantizer.zero_point))
+                print("Calibration finished in QConv2d.")
 
         # dropput
         if self.dropout is not None:

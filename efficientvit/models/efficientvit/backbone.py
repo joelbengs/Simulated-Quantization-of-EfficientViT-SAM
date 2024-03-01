@@ -519,6 +519,8 @@ class EfficientViTBackboneQuant(nn.Module):
             self.stages.append(OpSequential(stage)) # append the structure to the model
             self.width_list.append(in_channels)     # log the dimension
         self.stages = nn.ModuleList(self.stages)    # Convert all stags to PyTorch ModuleList, creating a PyTorch model
+        print("One EfficientViTBackboneQuant has been built")
+
 
 
     # Helper method that builds DSConv for the input stem and MBConv for the other stages
@@ -588,9 +590,7 @@ class EfficientViTBackboneQuant(nn.Module):
             output_dict["stage%d" % stage_id] = x = stage(x)    # Process through each stage
         output_dict["stage_final"] = x
         return output_dict                                      # All intermediate feautre maps are available in the dictionary, so that several features can be merged in the neck later
-
-    print("Hello world from EfficientViTBackboneQuant in backbone.py. Your quantized backbone has just been built")
-
+    
 
 def efficientvit_backbone_b1_quant(**kwargs) -> EfficientViTBackbone:
     # Step 4: Specify details of quantized backbone, and call for it using EfficientViTBackboneQuant
@@ -600,5 +600,4 @@ def efficientvit_backbone_b1_quant(**kwargs) -> EfficientViTBackbone:
         dim=16,
         **build_kwargs_from_config(kwargs, EfficientViTBackbone),
     )
-    print("Hello world from efficientvit_backbone_b1_quant. Your quantized backbone has been returned")
     return backbone

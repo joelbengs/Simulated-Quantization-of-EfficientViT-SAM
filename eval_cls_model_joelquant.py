@@ -81,11 +81,16 @@ def main():
     if args.quantize: calib_data_loader = val_data_loader
 
     # Model creation
-    #  model is created and b1_quant is passed as args.model
-    # "model" is an instance of class EfficientVitCls, incl. weights
     model = create_cls_model(args.model, weight_url=args.weight_url)
+    
+    # Model to device
     model = torch.nn.DataParallel(model).cuda() # wrapper -> To reach the model's own methods, call model.module.method
     model.eval()
+    # Split model over all available GPUs. Issue: observers need to be on the same device as their module. This was not the case with just FQ-ViT's implementation.
+    # Joel did some fixes in minmax.py, but perhaps we should either
+    # 1. Run calibration on a single gpu and then split? (copilot said that should still be equivalent in terms of calibration result)
+    # 2. Make sure that observers and quantizers are actually sub-modules of each layer, and therefore follow them to their device. Then they must be proper attributes of the layers.
+
 
     # Calibration dataset creation
     if args.quantize:
@@ -100,12 +105,14 @@ def main():
         model.module.toggle_calibrate_on()                # sets calibrate = true for all 'relevant' modules
         with torch.no_grad():
             for i, images in enumerate(calibration_dataset):
-                if i == len(calibration_dataset) - 1:           # for each batch of calibration data
+                print(f"Calibrate on batch{i}...")
+                if i == len(calibration_dataset) - 1:                  # for each batch of calibration data
                     model.module.toggle_last_calibrate_on()            # if last batch, set last_calibrate = true for all relevant modules
-                _ = model(images)                               # feed forward
+                    print("Last batch in calib...")
+                _ = model(images)                                      # feed forward
             model.module.toggle_calibrate_off()                        # sets calibrate = false for all reelvant modules
             model.module.toggle_last_calibrate_off()                   # sets last_calibrate = false for all reelvant modules
-            model.module.model_quant()                                 # just sets module.quant = true (or = 'int'). Doesn't alter any weights!
+            model.module.toggle_quant_on()                             # just sets module.quant = true (or = 'int'). Doesn't alter any weights!
 
     # Evaluation
     print("Validating...")

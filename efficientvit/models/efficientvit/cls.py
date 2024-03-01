@@ -82,7 +82,6 @@ class EfficientViTCls(nn.Module):
         for m in self.modules():
             if type(m) in [QConvLayer]:
                 m.calibrate = True
-        print("Sucessfully reached toggled calibrate on")
 
     def toggle_calibrate_off(self):
         for m in self.modules():

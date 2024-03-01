@@ -15,14 +15,21 @@ class UniformQuantizer(BaseQuantizer):
     def update_quantization_params(self, *args, **kwargs):
         self.scale, self.zero_point = self.observer.get_quantization_params(
             *args, **kwargs)
+        if self.scale is None:
+            raise ValueError("Scale is None after getting quantization params.")
+        if self.zero_point is None:
+            raise ValueError("Zero point is None after getting quantization params.")
+        print(f"Parameters updated: S = {self.scale}, S.type = {self.scale.type()}, Z = {self.zero_point}, Z.type = {self.zero_point.type()}")
 
-    # Note: You can do quant as simple as quant(input, scale, zeropoint) where the input is a floating point number - question is what can call a quantizer? Where is it held?
+
     def quant(self, inputs, scale=None, zero_point=None):
         if scale is None:
             scale = self.scale
         if zero_point is None:
             zero_point = self.zero_point
         range_shape = self.get_reshape_range(inputs)
+        print(f"Uniform.quant(): Scale is {scale} and has type{scale.type}")
+        print()
         scale = scale.reshape(range_shape)
         zero_point = zero_point.reshape(range_shape)
         outputs = inputs / scale + zero_point
