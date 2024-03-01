@@ -49,6 +49,7 @@ def main():
 
     args = parser.parse_args()
 
+    '''
     # GPU connection
     if args.gpu == "all":
         device_list = range(torch.cuda.device_count())
@@ -57,6 +58,12 @@ def main():
         device_list = [int(_) for _ in args.gpu.split(",")]
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     args.batch_size = args.batch_size * max(len(device_list), 1) # multiply by numer of GPUs to benefit from parallell processing
+    '''
+
+    # GPU connection
+    device_list = [0]  # Use the first CUDA device
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(device_list[0])
+    args.batch_size = args.batch_size * len(device_list)  # multiply by number of GPUs to benefit from parallel processing
 
     # Transformations
     val_transform = transforms.Compose([
@@ -82,9 +89,9 @@ def main():
 
     # Model creation
     model = create_cls_model(args.model, weight_url=args.weight_url)
-    
-    # Model to device
     model = torch.nn.DataParallel(model).cuda() # wrapper -> To reach the model's own methods, call model.module.method
+
+    # Model to device
     model.eval()
     # Split model over all available GPUs. Issue: observers need to be on the same device as their module. This was not the case with just FQ-ViT's implementation.
     # Joel did some fixes in minmax.py, but perhaps we should either
@@ -116,9 +123,10 @@ def main():
 
     # Evaluation
     print("Validating...")
+
     validate(args, val_data_loader, model)
 
-    print_model_params(model)
+    #print_model_params(model)
     
     #print(f"Model structure: {model}\n\n")
 
@@ -144,7 +152,7 @@ def validate(args, val_data_loader, model):
                 t.update(1)
 
     print("Results from Joel's evaluation")
-    print(f"Top1 Acc={top1.avg:.3f}, Top5 Acc={top5.avg:.3f}")
+    print(f"Top1 Acc={top1.avg:.6f}, Top5 Acc={top5.avg:.6f}")
 
 # prints the first 10 model params
 def print_model_params(model):

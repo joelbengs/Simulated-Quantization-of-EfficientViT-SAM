@@ -28,8 +28,6 @@ class UniformQuantizer(BaseQuantizer):
         if zero_point is None:
             zero_point = self.zero_point
         range_shape = self.get_reshape_range(inputs)
-        print(f"Uniform.quant(): Scale is {scale} and has type{scale.type}")
-        print()
         scale = scale.reshape(range_shape)
         zero_point = zero_point.reshape(range_shape)
         outputs = inputs / scale + zero_point

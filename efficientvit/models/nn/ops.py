@@ -648,10 +648,9 @@ class QConvLayer(nn.Module):
         print("One QConvLayer built")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        print(f"Forward method called on device {x.device}. calibrate = {self.calibrate}, last_calib = {self.last_calibrate}")
-
         # calibrate
         if self.calibrate:
+            print(f"Forward method called on device {x.device}. calibrate = {self.calibrate}, last_calib = {self.last_calibrate}")
             self.quantizer.observer.update(self.conv.weight) # for all batches of calibration data: update statistics
             print("Calibration batch processed in QConv2d")
             if self.last_calibrate:                          # after the last batch, fetch S and Z of the quantizer
