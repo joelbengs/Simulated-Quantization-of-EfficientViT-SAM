@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 
 from efficientvit.models.efficientvit.backbone import EfficientViTBackbone, EfficientViTLargeBackbone, EfficientViTBackboneQuant
-from efficientvit.models.nn import ConvLayer, LinearLayer, OpSequential
+from efficientvit.models.nn import ConvLayer, LinearLayer, OpSequential, QConvLayer, QLinearLayer
 from efficientvit.models.utils import build_kwargs_from_config
 
 # imports of quantized layers needed for the toggle functions
@@ -41,10 +41,10 @@ class ClsHead(OpSequential):
         fid="stage_final", # question: where in the code are they upscaling and concatenating intermediate feature maps?
     ):
         ops = [
-            ConvLayer(in_channels, width_list[0], 1, norm=norm, act_func=act_func),
+            QConvLayer(in_channels, width_list[0], 1, norm=norm, act_func=act_func),
             nn.AdaptiveAvgPool2d(output_size=1),
-            LinearLayer(width_list[0], width_list[1], False, norm="ln", act_func=act_func),
-            LinearLayer(width_list[1], n_classes, True, dropout, None, None),
+            QLinearLayer(width_list[0], width_list[1], False, norm="ln", act_func=act_func),
+            QLinearLayer(width_list[1], n_classes, True, dropout, None, None),
         ]
         super().__init__(ops) # another way of making the above layers callable by pytorch in the forward pass.
 
@@ -80,27 +80,27 @@ class EfficientViTCls(nn.Module):
 
     def toggle_calibrate_on(self):
         for m in self.modules():
-            if type(m) in [QConvLayer]:
+            if type(m) in [QConvLayer, QLinearLayer]:
                 m.calibrate = True
 
     def toggle_calibrate_off(self):
         for m in self.modules():
-            if type(m) in [QConvLayer]:
+            if type(m) in [QConvLayer, QLinearLayer]:
                 m.calibrate = False
 
     def toggle_last_calibrate_on(self):
         for m in self.modules():
-            if type(m) in [QConvLayer]:
+            if type(m) in [QConvLayer, QLinearLayer]:
                 m.last_calibrate = True
 
     def toggle_last_calibrate_off(self):
       for m in self.modules():
-            if type(m) in [QConvLayer]:
+            if type(m) in [QConvLayer, QLinearLayer]:
                 m.last_calibrate = False
     
     def toggle_quant_on(self):
         for m in self.modules():
-            if type(m) in [QConvLayer]:
+            if type(m) in [QConvLayer, QLinearLayer]:
                 m.quant = True
             #if self.cfg.INT_NORM:
              #   if type(m) in [QIntLayerNorm]:
@@ -108,7 +108,7 @@ class EfficientViTCls(nn.Module):
     
     def toggle_quant_off(self):
         for m in self.modules():
-            if type(m) in [QConvLayer]:
+            if type(m) in [QConvLayer, QLinearLayer]:
                 m.quant = True
             #if self.cfg.INT_NORM:
              #   if type(m) in [QIntLayerNorm]:

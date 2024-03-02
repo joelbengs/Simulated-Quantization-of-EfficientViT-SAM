@@ -16,21 +16,35 @@ from efficientvit.models.ptq.observer import build_observer
 from efficientvit.models.ptq.quantizer import build_quantizer
 
 __all__ = [
+    ## basic layers ##
     "ConvLayer",
     "UpSampleLayer",
     "LinearLayer",
     "IdentityLayer",
+    ## basic blocks ##
     "DSConv",
     "MBConv",
     "FusedMBConv",
     "ResBlock",
     "LiteMLA",
     "EfficientViTBlock",
+    ## functional blocks ##
     "ResidualBlock",
     "DAGBlock",
     "OpSequential",
-    ## Quantized ops ##
+    ## quantized basic layers ##
     "QConvLayer",
+    "QUpSampleLayer",
+    "QLinearLayer",
+    "QIdentityLayer",
+    ## quantized basic blocks ##
+    "QDSConv",
+    "QMBConv",
+    "QFusedMBConv",
+    "QResBlock",
+    "QLiteMLA",
+    "QEfficientViTBlock",
+    ## there are no quantized functional blocks ##
 ]
 
 
@@ -494,7 +508,7 @@ class EfficientViTBlock(nn.Module):
 #                             Functional Blocks                                 #
 #################################################################################
 
-
+# Wrapper of other blocks
 class ResidualBlock(nn.Module):
     def __init__(
         self,
@@ -527,7 +541,7 @@ class ResidualBlock(nn.Module):
                 res = self.post_act(res)
         return res
 
-
+# Concat and addition operations
 class DAGBlock(nn.Module):
     def __init__(
         self,
@@ -563,7 +577,6 @@ class DAGBlock(nn.Module):
         for key, op in zip(self.output_keys, self.output_ops):
             feature_dict[key] = op(feat)
         return feature_dict
-
 
 # A pipeline, or a sequence of operations.
 class OpSequential(nn.Module):
@@ -614,7 +627,7 @@ class QConvLayer(nn.Module):
             observer_str='minmax',
             quantizer_str='uniform',):
         
-        super(QConvLayer, self).__init__()
+        super().__init__()
         padding = get_same_padding(kernel_size)
         padding *= dilation
 
@@ -641,23 +654,23 @@ class QConvLayer(nn.Module):
         self.observer_str = observer_str
         self.quantizer_str = quantizer_str
         self.module_type = 'conv_weight'
-        self.observer = build_observer(self.observer_str, self.module_type, 
-                                       self.bit_type, self.calibration_mode)
-        self.quantizer = build_quantizer(self.quantizer_str, self.bit_type, 
-                                          self.observer, self.module_type)
-        print("One QConvLayer built")
+        observer_object = build_observer(self.observer_str, self.module_type, 
+                                       self.bit_type, self.calibration_mode) # in FQ-ViT, this is saved as self.observer for no reason
+        self.quantizer = build_quantizer(self.quantizer_str, self.bit_type,
+                                          observer_object, self.module_type)
+        #print("One QConvLayer built")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # calibrate
         if self.calibrate:
-            print(f"Forward method called on device {x.device}. calibrate = {self.calibrate}, last_calib = {self.last_calibrate}")
+            #print(f"Forward method called on device {x.device}. calibrate = {self.calibrate}, last_calib = {self.last_calibrate}")
             self.quantizer.observer.update(self.conv.weight) # for all batches of calibration data: update statistics
-            print("Calibration batch processed in QConv2d")
+            #print("Calibration batch processed in QConv2d")
             if self.last_calibrate:                          # after the last batch, fetch S and Z of the quantizer
                 self.quantizer.update_quantization_params(x) # maybe x is not needed as argument
-                print("Calibration finished in QConv2d.")
+                #print("Calibration finished in QConv2d.")
 
-        # dropput
+        # dropout
         if self.dropout is not None:
             x = self.dropout(x)
 
@@ -674,8 +687,475 @@ class QConvLayer(nn.Module):
         if self.norm:
             x = self.norm(x) # calls the activation function
         
-        #activation
+        # activation
         if self.act:
             x = self.act(x)
 
         return x
+
+# Not used for anything??
+class QUpSampleLayer(nn.Module):
+    def __init__(
+        self,
+        mode="bicubic",
+        size: int or tuple[int, int] or list[int] or None = None,
+        factor=2,
+        align_corners=False,
+    ):
+        super().__init__()
+        self.mode = mode
+        self.size = val2list(size, 2) if size is not None else None
+        self.factor = None if self.size is not None else factor
+        self.align_corners = align_corners
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if (self.size is not None and tuple(x.shape[-2:]) == self.size) or self.factor == 1:
+            return x
+        return resize(x, self.size, self.factor, self.mode, self.align_corners)
+
+
+class QLinearLayer(nn.Module):
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        use_bias=True,
+        dropout=0,
+        norm=None,
+        act_func=None,
+        # custom arguments
+        quant=False,                       # defined at model level
+        calibrate=False,                   # defined at model level
+        last_calibrate=False,              # defined at module level, altered at model level
+        bit_type=BIT_TYPE_DICT['int8'],    # defined at module level
+        calibration_mode='layer_wise',
+        observer_str='minmax',
+        quantizer_str='uniform',):
+        super().__init__()
+
+        self.dropout = nn.Dropout(dropout, inplace=False) if dropout > 0 else None
+        self.linear = nn.Linear(in_features, out_features, use_bias)
+        self.norm = build_norm(norm, num_features=out_features)
+        self.act = build_act(act_func)
+
+        # Custom arguments
+        self.quant = quant
+        self.calibrate = calibrate
+        self.last_calibrate = last_calibrate
+        self.bit_type = bit_type
+        self.calibration_mode = calibration_mode
+        self.observer_str = observer_str
+        self.quantizer_str = quantizer_str
+        self.module_type = 'linear_weight'
+        observer_object = build_observer(self.observer_str, self.module_type, 
+                                       self.bit_type, self.calibration_mode) # in FQ-ViT, this is saved as self.observer for no reason
+        self.quantizer = build_quantizer(self.quantizer_str, self.bit_type,
+                                          observer_object, self.module_type)
+        #print("One QLinearLayer built")
+
+    def _try_squeeze(self, x: torch.Tensor) -> torch.Tensor:
+        if x.dim() > 2:
+            x = torch.flatten(x, start_dim=1)
+        return x
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self._try_squeeze(x)
+        if self.dropout:
+            x = self.dropout(x)
+        # calibration
+        if self.calibrate:
+            self.quantizer.observer.update(self.linear.weight)
+            if self.last_calibrate:
+                self.quantizer.update_quantization_params(x)
+        
+        # quantization
+        if self.quant:
+            w = self.quantizer(self.linear.weight)
+            x = F.linear(x, w, self.linear.bias)
+        else:        
+            x = self.linear(x)
+
+        if self.norm:
+            x = self.norm(x)
+        if self.act:
+            x = self.act(x)
+        return x
+
+
+# not implemented
+class QIdentityLayer(nn.Module):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x
+
+
+
+#################################################################################
+#                         Quantized Basic Blocks                                #
+#################################################################################
+
+
+# Wraps QConvLayer twice. No other modifications
+class QDSConv(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size=3,
+        stride=1,
+        use_bias=False,
+        norm=("bn2d", "bn2d"),
+        act_func=("relu6", None),):
+        super().__init__()
+
+        use_bias = val2tuple(use_bias, 2)
+        norm = val2tuple(norm, 2)
+        act_func = val2tuple(act_func, 2)
+
+        self.depth_conv = QConvLayer(      
+            in_channels,
+            in_channels,
+            kernel_size,
+            stride,
+            groups=in_channels,
+            norm=norm[0],
+            act_func=act_func[0],
+            use_bias=use_bias[0],
+        )
+        self.point_conv = QConvLayer(
+            in_channels,
+            out_channels,
+            1,
+            norm=norm[1],
+            act_func=act_func[1],
+            use_bias=use_bias[1],
+        )
+         # Custom arguments
+        print("One QDSConv built, using two QConvLayers")
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # calibrate
+        #if self.calibrate:
+         #   self.quantizer_depth.observer.update(self.depth_conv.weight)
+          #  if self.last_calibrate:
+           #     self.quantizer_point.update_quantization_params(x)
+        
+        # quantized forward pass
+        #if self.quant:
+         #   weights_dept_conv = self.quantizer_depth(self.depth_conv.weight)
+            #weights_point_conv = self.quantizer_point(self.point_conv.weight)
+          #  #x = # TODO: perform the self.dept_conv(x) operation but using quantized weights_dept_conv
+            #x = # TODO: perform the self.point_conv(x) operation but using quantized weights_point_conv
+           # x = F.conv2d(x, weights_dept_conv, stride=self.depth_conv.stride, padding=self.depth_conv.padding, groups=self.depth_conv.groups)
+            #x = F.conv2d(x, weights_point_conv, stride=self.point_conv.stride, padding=self.point_conv.padding)
+        
+        x = self.depth_conv(x)
+        x = self.point_conv(x)
+        return x
+
+# Wraps QConvLayer three times. No other modifications
+class QMBConv(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size=3,
+        stride=1,
+        mid_channels=None,
+        expand_ratio=6,
+        use_bias=False,
+        norm=("bn2d", "bn2d", "bn2d"),
+        act_func=("relu6", "relu6", None),
+    ):
+        super().__init__()
+
+        use_bias = val2tuple(use_bias, 3)
+        norm = val2tuple(norm, 3)
+        act_func = val2tuple(act_func, 3)
+        mid_channels = mid_channels or round(in_channels * expand_ratio)
+
+        self.inverted_conv = QConvLayer(
+            in_channels,
+            mid_channels,
+            1,
+            stride=1,
+            norm=norm[0],
+            act_func=act_func[0],
+            use_bias=use_bias[0],
+        )
+        self.depth_conv = QConvLayer(
+            mid_channels,
+            mid_channels,
+            kernel_size,
+            stride=stride,
+            groups=mid_channels,
+            norm=norm[1],
+            act_func=act_func[1],
+            use_bias=use_bias[1],
+        )
+        self.point_conv = QConvLayer(
+            mid_channels,
+            out_channels,
+            1,
+            norm=norm[2],
+            act_func=act_func[2],
+            use_bias=use_bias[2],
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.inverted_conv(x)
+        x = self.depth_conv(x)
+        x = self.point_conv(x)
+        return x
+
+# Wraps QConvLayer twice. No other modifications. Is only used in Large models!
+class QFusedMBConv(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size=3,
+        stride=1,
+        mid_channels=None,
+        expand_ratio=6,
+        groups=1,
+        use_bias=False,
+        norm=("bn2d", "bn2d"),
+        act_func=("relu6", None),
+    ):
+        super().__init__()
+        use_bias = val2tuple(use_bias, 2)
+        norm = val2tuple(norm, 2)
+        act_func = val2tuple(act_func, 2)
+
+        mid_channels = mid_channels or round(in_channels * expand_ratio)
+
+        self.spatial_conv = QConvLayer(
+            in_channels,
+            mid_channels,
+            kernel_size,
+            stride,
+            groups=groups,
+            use_bias=use_bias[0],
+            norm=norm[0],
+            act_func=act_func[0],
+        )
+        self.point_conv = QConvLayer(
+            mid_channels,
+            out_channels,
+            1,
+            use_bias=use_bias[1],
+            norm=norm[1],
+            act_func=act_func[1],
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.spatial_conv(x)
+        x = self.point_conv(x)
+        return x
+
+# Wraps QConvLayer twice. No other modifications.  Is only used in Large models!
+class QResBlock(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size=3,
+        stride=1,
+        mid_channels=None,
+        expand_ratio=1,
+        use_bias=False,
+        norm=("bn2d", "bn2d"),
+        act_func=("relu6", None),
+    ):
+        super().__init__()
+        use_bias = val2tuple(use_bias, 2)
+        norm = val2tuple(norm, 2)
+        act_func = val2tuple(act_func, 2)
+
+        mid_channels = mid_channels or round(in_channels * expand_ratio)
+
+        self.conv1 = QConvLayer(
+            in_channels,
+            mid_channels,
+            kernel_size,
+            stride,
+            use_bias=use_bias[0],
+            norm=norm[0],
+            act_func=act_func[0],
+        )
+        self.conv2 = QConvLayer(
+            mid_channels,
+            out_channels,
+            kernel_size,
+            1,
+            use_bias=use_bias[1],
+            norm=norm[1],
+            act_func=act_func[1],
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.conv1(x)
+        x = self.conv2(x)
+        return x
+
+# Not used in backbone.py directly, only via QEfficientVitBlock
+# Quantization not complete yet
+class QLiteMLA(nn.Module):
+    r"""Lightweight multi-scale linear attention"""
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        heads: int or None = None,
+        heads_ratio: float = 1.0,
+        dim=8,
+        use_bias=False,
+        norm=(None, "bn2d"),
+        act_func=(None, None),
+        kernel_func="relu",
+        scales: tuple[int, ...] = (5,),
+        eps=1.0e-15,
+    ):
+        super().__init__()
+        self.eps = eps
+        heads = heads or int(in_channels // dim * heads_ratio)
+
+        total_dim = heads * dim
+
+        use_bias = val2tuple(use_bias, 2)
+        norm = val2tuple(norm, 2)
+        act_func = val2tuple(act_func, 2)
+
+        self.dim = dim
+        self.qkv = QConvLayer(
+            in_channels,
+            3 * total_dim,
+            1,
+            use_bias=use_bias[0],
+            norm=norm[0],
+            act_func=act_func[0],
+        )
+        self.aggreg = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Conv2d(
+                        3 * total_dim,
+                        3 * total_dim,
+                        scale,
+                        padding=get_same_padding(scale),
+                        groups=3 * total_dim,
+                        bias=use_bias[0],
+                    ),
+                    nn.Conv2d(3 * total_dim, 3 * total_dim, 1, groups=3 * heads, bias=use_bias[0]),
+                )
+                for scale in scales
+            ]
+        )
+        self.kernel_func = build_act(kernel_func, inplace=False)
+
+        self.proj = QConvLayer(
+            total_dim * (1 + len(scales)),
+            out_channels,
+            1,
+            use_bias=use_bias[1],
+            norm=norm[1],
+            act_func=act_func[1],
+        )
+
+    @autocast(enabled=False)
+    def relu_linear_att(self, qkv: torch.Tensor) -> torch.Tensor:
+        B, _, H, W = list(qkv.size())
+
+        if qkv.dtype == torch.float16:
+            qkv = qkv.float()
+
+        qkv = torch.reshape(
+            qkv,
+            (
+                B,
+                -1,
+                3 * self.dim,
+                H * W,
+            ),
+        )
+        qkv = torch.transpose(qkv, -1, -2)
+        q, k, v = (
+            qkv[..., 0 : self.dim],
+            qkv[..., self.dim : 2 * self.dim],
+            qkv[..., 2 * self.dim :],
+        )
+
+        # lightweight linear attention
+        q = self.kernel_func(q)
+        k = self.kernel_func(k)
+
+        # linear matmul
+        trans_k = k.transpose(-1, -2)
+
+        v = F.pad(v, (0, 1), mode="constant", value=1)
+        kv = torch.matmul(trans_k, v)
+        out = torch.matmul(q, kv)
+        out = out[..., :-1] / (out[..., -1:] + self.eps)
+
+        out = torch.transpose(out, -1, -2)
+        out = torch.reshape(out, (B, -1, H, W))
+        return out
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # generate multi-scale q, k, v
+        qkv = self.qkv(x)
+        multi_scale_qkv = [qkv]
+        for op in self.aggreg:
+            multi_scale_qkv.append(op(qkv))
+        multi_scale_qkv = torch.cat(multi_scale_qkv, dim=1)
+
+        out = self.relu_linear_att(multi_scale_qkv)
+        out = self.proj(out)
+
+        return out
+
+
+class QEfficientViTBlock(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        heads_ratio: float = 1.0,
+        dim=32,
+        expand_ratio: float = 4,
+        scales=(5,),
+        norm="bn2d",
+        act_func="hswish",
+    ):
+        super().__init__()
+        self.context_module = ResidualBlock(
+            QLiteMLA(
+                in_channels=in_channels,
+                out_channels=in_channels,
+                heads_ratio=heads_ratio,
+                dim=dim,
+                norm=(None, norm),
+                scales=scales,
+            ),
+            IdentityLayer(),
+        )
+        local_module = QMBConv(
+            in_channels=in_channels,
+            out_channels=in_channels,
+            expand_ratio=expand_ratio,
+            use_bias=(True, True, False),
+            norm=(None, None, norm),
+            act_func=(act_func, act_func, None),
+        )
+        self.local_module = ResidualBlock(local_module, IdentityLayer())
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.context_module(x)
+        x = self.local_module(x)
+        return x
+
+
+#################################################################################
+#                   There are no Quantized Functional Blocks                    #
+#################################################################################
+

@@ -16,7 +16,14 @@ from efficientvit.models.nn import (
     ResBlock,
     ResidualBlock,
     ## quantized modules ##
+       ## Quantized ops ##
     QConvLayer,
+    QDSConv,
+    QMBConv,
+    QFusedMBConv,
+    QResBlock,
+    QLiteMLA,
+    QEfficientViTBlock,
 )
 from efficientvit.models.utils import build_kwargs_from_config
 
@@ -441,7 +448,7 @@ class EfficientViTBackboneQuant(nn.Module):
                 in_channels=width_list[0],
                 out_channels=width_list[0],
                 stride=1,
-                expand_ratio=1, # forces a DSConv instead of MBConv
+                expand_ratio=1,             # forces a DSConv instead of MBConv
                 norm=norm,
                 act_func=act_func,
             )
@@ -508,7 +515,7 @@ class EfficientViTBackboneQuant(nn.Module):
 
             for _ in range(d):                      # then depth[] number of the novel EViTBlocks!
                 stage.append(                       # They are appended b2b on each other
-                    EfficientViTBlock(
+                    QEfficientViTBlock(
                         in_channels=in_channels,
                         dim=dim,
                         expand_ratio=expand_ratio,
@@ -550,7 +557,7 @@ class EfficientViTBackboneQuant(nn.Module):
         nn.Module: The created block, which is either a DSConv block if expand_ratio is 1, or an MBConv block otherwise.
         """
         if expand_ratio == 1:
-            block = DSConv(
+            block = QDSConv(
                 in_channels=in_channels,
                 out_channels=out_channels,
                 stride=stride,
@@ -559,7 +566,7 @@ class EfficientViTBackboneQuant(nn.Module):
                 act_func=(act_func, None),
             )
         else:
-            block = MBConv(
+            block = QMBConv(
                 in_channels=in_channels,
                 out_channels=out_channels,
                 stride=stride,

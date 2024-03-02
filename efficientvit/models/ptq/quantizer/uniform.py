@@ -19,7 +19,7 @@ class UniformQuantizer(BaseQuantizer):
             raise ValueError("Scale is None after getting quantization params.")
         if self.zero_point is None:
             raise ValueError("Zero point is None after getting quantization params.")
-        print(f"Parameters updated: S = {self.scale}, S.type = {self.scale.type()}, Z = {self.zero_point}, Z.type = {self.zero_point.type()}")
+        #print(f"Parameters updated: S = {self.scale}, S.type = {self.scale.type()}, Z = {self.zero_point}, Z.type = {self.zero_point.type()}")
 
 
     def quant(self, inputs, scale=None, zero_point=None):

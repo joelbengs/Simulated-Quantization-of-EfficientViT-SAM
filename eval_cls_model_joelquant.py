@@ -5,6 +5,9 @@
 import argparse
 import math
 import os
+import time
+from datetime import timedelta
+
 
 import torch.utils.data
 from torchvision import datasets, transforms
@@ -29,7 +32,6 @@ def accuracy(output: torch.Tensor, target: torch.Tensor, topk=(1,)) -> list[torc
         res.append(correct_k.mul_(100.0 / batch_size))
     return res
 
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--path", type=str, default="/dataset/imagenet/val")
@@ -39,14 +41,13 @@ def main():
     parser.add_argument("--image_size", type=int, default=224)
     parser.add_argument("--crop_ratio", type=float, default=0.95)
     #parser.add_argument("--model", type=str)
-    # below: model hradcoded to skip arguments when developing
+    # below: model haadcoded to skip arguments when developing
     parser.add_argument("--model", type=str, default="b1_quant-r224")
     parser.add_argument("--weight_url", type=str, default=None)
     # quantization arguments
     parser.add_argument("--quantize", action="store_true") # just flag --quantize to turn on quantization
     parser.add_argument('--calib-batchsize', default=50,type=int,help='batchsize of calibration set') # FQ-ViT used 100, not 50
     parser.add_argument('--calib-iter', default=10, type=int)
-
     args = parser.parse_args()
 
     '''
@@ -60,10 +61,9 @@ def main():
     args.batch_size = args.batch_size * max(len(device_list), 1) # multiply by numer of GPUs to benefit from parallell processing
     '''
 
-    # GPU connection
+    # GPU connection to just a single Cuda
     device_list = [0]  # Use the first CUDA device
     os.environ["CUDA_VISIBLE_DEVICES"] = str(device_list[0])
-    args.batch_size = args.batch_size * len(device_list)  # multiply by number of GPUs to benefit from parallel processing
 
     # Transformations
     val_transform = transforms.Compose([
@@ -85,74 +85,73 @@ def main():
         pin_memory=True,
         drop_last=False,
     )
-    if args.quantize: calib_data_loader = val_data_loader
+    if args.quantize: calib_data_loader = val_data_loader # Using validation data now - must change to training data!
 
     # Model creation
     model = create_cls_model(args.model, weight_url=args.weight_url)
-    model = torch.nn.DataParallel(model).cuda() # wrapper -> To reach the model's own methods, call model.module.method
-
     # Model to device
+    model = torch.nn.DataParallel(model).cuda() # wrapper -> To reach the model's own methods, call model.module.method
+    # Model to inference mode
     model.eval()
-    # Split model over all available GPUs. Issue: observers need to be on the same device as their module. This was not the case with just FQ-ViT's implementation.
+    '''# Split model over all available GPUs. Issue: observers need to be on the same device as their module. This was not the case with just FQ-ViT's implementation.
     # Joel did some fixes in minmax.py, but perhaps we should either
     # 1. Run calibration on a single gpu and then split? (copilot said that should still be equivalent in terms of calibration result)
     # 2. Make sure that observers and quantizers are actually sub-modules of each layer, and therefore follow them to their device. Then they must be proper attributes of the layers.
+    '''
 
-
-    # Calibration dataset creation
+    # Calibration
     if args.quantize:
-        # Using validation data now - must change to training data!
-        calibration_dataset = []
-        for i, (images, labels) in enumerate(calib_data_loader):
-            if i == args.calib_iter: break          # default is 10 iterations
-            immages = images.cuda()                 # move data to GPU
-            calibration_dataset.append(images)      # append each batch
-
         print("Calibrating...")
-        model.module.toggle_calibrate_on()                # sets calibrate = true for all 'relevant' modules
-        with torch.no_grad():
-            for i, images in enumerate(calibration_dataset):
-                print(f"Calibrate on batch{i}...")
-                if i == len(calibration_dataset) - 1:                  # for each batch of calibration data
-                    model.module.toggle_last_calibrate_on()            # if last batch, set last_calibrate = true for all relevant modules
-                    print("Last batch in calib...")
-                _ = model(images)                                      # feed forward
-            model.module.toggle_calibrate_off()                        # sets calibrate = false for all reelvant modules
-            model.module.toggle_last_calibrate_off()                   # sets last_calibrate = false for all reelvant modules
-            model.module.toggle_quant_on()                             # just sets module.quant = true (or = 'int'). Doesn't alter any weights!
+        calibrate(args, val_data_loader, model) 
+        quantize(model)
 
     # Evaluation
     print("Validating...")
-
     validate(args, val_data_loader, model)
 
     #print_model_params(model)
     
     #print(f"Model structure: {model}\n\n")
 
+def calibrate(args, calib_data_loader, model):
+        calibration_dataset = []
+        for i, (images, labels) in enumerate(calib_data_loader):
+            if i == args.calib_iter: break          # default is 10 iterations
+            immages = images.cuda()                 # move data to GPU
+            calibration_dataset.append(images)      # append each batch
+      
+        model.module.toggle_calibrate_on()                # sets calibrate = true for all 'relevant' modules
+        with torch.no_grad():
+            for i, images in enumerate(calibration_dataset):
+                if i == len(calibration_dataset) - 1:                  # for each batch of calibration data
+                    model.module.toggle_last_calibrate_on()            # if last batch, set last_calibrate = true for all relevant modules
+                _ = model(images)                                      # feed forward
+            model.module.toggle_calibrate_off()                        # sets calibrate = false for all reelvant modules
+            model.module.toggle_last_calibrate_off()                   # sets last_calibrate = false for all reelvant modules
+
+def quantize(model):
+    model.module.toggle_quant_on()                             # just sets module.quant = true (or = 'int'). Doesn't alter any weights!
+
 def validate(args, val_data_loader, model):
     top1 = AverageMeter(is_distributed=False)
     top5 = AverageMeter(is_distributed=False)
-    with torch.inference_mode():
-        with tqdm(total=len(val_data_loader), desc=f"Eval {args.model} on ImageNet") as t:
+
+    with torch.inference_mode(): # or use no_grad instead?
+        with tqdm(total=len(val_data_loader), desc=f"Eval {args.model} on ImageNet") as progressbar:
+            start_time = time.time()
             for images, labels in val_data_loader:                      # images is a 4D tensor: (batch_size, channels (rgb), height, width)
-                images, labels = images.cuda(), labels.cuda()       # Moving images and labels to the GPU
-                output = model(images)                              # inference
-                acc1, acc5 = accuracy(output, labels, topk=(1, 5))  # measure accuracy and record loss
+                images, labels = images.cuda(), labels.cuda()           # Moving images and labels to the GPU
+                output = model(images)                                  # inference
+                acc1, acc5 = accuracy(output, labels, topk=(1, 5))      # measure accuracy and record loss
+                top1.update(acc1[0].item(), images.size(0))             # update accuracy
+                top5.update(acc5[0].item(), images.size(0))             # update accuracy
+                progressbar.set_postfix({"top1": top1.avg, "top5": top5.avg, "resolution": images.shape[-1],})
+                progressbar.update(1)
+            # measure elapsed time
+            end_time = time.time()
 
-                top1.update(acc1[0].item(), images.size(0))
-                top5.update(acc5[0].item(), images.size(0))
-                t.set_postfix(
-                    {
-                        "top1": top1.avg,
-                        "top5": top5.avg,
-                        "resolution": images.shape[-1],
-                    }
-                )
-                t.update(1)
-
-    print("Results from Joel's evaluation")
-    print(f"Top1 Acc={top1.avg:.6f}, Top5 Acc={top5.avg:.6f}")
+    print(f"Results from validation of {args.model} on {args.path}")
+    print(f"Top1 Acc = {top1.avg:.6f}, Top5 Acc = {top5.avg:.6f}, Time = {str(timedelta(seconds=int(end_time - start_time)))}")
 
 # prints the first 10 model params
 def print_model_params(model):
