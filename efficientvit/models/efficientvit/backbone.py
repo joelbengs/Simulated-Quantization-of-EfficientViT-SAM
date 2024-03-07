@@ -413,10 +413,12 @@ class EfficientViTBackboneQuant(nn.Module):
         expand_ratio=4,         # The ratio by which to expand the channels in a block if = 1, all MBConvs are turn into DSConv. 
         norm="bn2d",            # Normalization
         act_func="hswish",      # activation function
+        config=None,            # configurations built by quant_config.py, using parsed arguments
     ) -> None:
         super().__init__()
 
         self.width_list = []    # for logging, doesn't affect backbone building.
+        self.config=config
 
         #################################################################################
         #                       Input Stem of EfficientViT                              #
@@ -437,8 +439,7 @@ class EfficientViTBackboneQuant(nn.Module):
                 out_channels=width_list[0], # width_list=[16, _, _, _, _] --> 16 kernels
                 stride=2,                   # Stride 2
                 norm=norm,
-                act_func=act_func,
-                
+                act_func=act_func,        
             )
         ]
 
@@ -508,9 +509,9 @@ class EfficientViTBackboneQuant(nn.Module):
                 expand_ratio=expand_ratio,          # of type MBConv
                 norm=norm,
                 act_func=act_func,
-                fewer_norm=True,                    # and with fewer_norm
+                fewer_norm=True,                    # and with fewer_norm, affecting bias and norm
             )
-            stage.append(ResidualBlock(block, None))# wrap in ResidualBlock, no identity layer
+            stage.append(ResidualBlock(block, None))# wrap in ResidualBlock, BUT no identity layer = no residual connection!
             in_channels = w                         # its output width is input to next
 
             for _ in range(d):                      # then depth[] number of the novel EViTBlocks!
@@ -599,12 +600,13 @@ class EfficientViTBackboneQuant(nn.Module):
         return output_dict                                      # All intermediate feautre maps are available in the dictionary, so that several features can be merged in the neck later
     
 
-def efficientvit_backbone_b1_quant(**kwargs) -> EfficientViTBackbone:
+def efficientvit_backbone_b1_quant(**kwargs) -> EfficientViTBackboneQuant:
     # Step 4: Specify details of quantized backbone, and call for it using EfficientViTBackboneQuant
     backbone = EfficientViTBackboneQuant(
         width_list=[16, 32, 64, 128, 256],
         depth_list=[1, 2, 3, 3, 4],
         dim=16,
-        **build_kwargs_from_config(kwargs, EfficientViTBackbone),
+        # filter the kwargs dict to match what EfficientVitBackboneQuant expects, and unpack the result with **
+        **build_kwargs_from_config(kwargs, EfficientViTBackboneQuant),
     )
     return backbone

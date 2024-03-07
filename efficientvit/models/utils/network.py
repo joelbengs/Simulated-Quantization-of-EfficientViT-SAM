@@ -56,13 +56,15 @@ def resize(
         raise NotImplementedError(f"resize(mode={mode}) not implemented.")
 
 
+# The build_kwargs_from_config(kwargs, EfficientViTBackbone) function is used to filter the kwargs dictionary to only include keys that are valid parameters
+# for (e.g.) the EfficientViTBackbone class. This is done by checking the function signature of the EfficientViTBackbone class's __init__ method.
 def build_kwargs_from_config(config: dict, target_func: callable) -> dict[str, any]:
-    valid_keys = list(signature(target_func).parameters)
+    valid_keys = list(signature(target_func).parameters) # fetches the ordered names of arguments that the function accepts in its constructor.
     kwargs = {}
-    for key in config:
-        if key in valid_keys:
-            kwargs[key] = config[key]
-    return kwargs
+    for key in config:                # if key in input kwargs
+        if key in valid_keys:         # and also accepted by target function
+            kwargs[key] = config[key] # place new key in new kwargs dict, and fetch value from old input kwargs dict
+    return kwargs                     # return filtered kwargs
 
 
 def load_state_dict_from_file(file: str, only_state_dict=True) -> dict[str, torch.Tensor]:

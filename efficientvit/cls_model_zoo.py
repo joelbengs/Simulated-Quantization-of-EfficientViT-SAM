@@ -76,7 +76,7 @@ def create_cls_model(name: str, pretrained=True, weight_url: str or None = None,
         raise ValueError(f"Do not find {name} in the model zoo. List of models: {list(model_dict.keys())}")
     else:
         # Step 2: call efficientvit_cls_b1_quant for model creation
-        model = model_dict[model_id](**kwargs)
+        model = model_dict[model_id](**kwargs) #config=config gets passed on
     if model_id in ["l1", "l2", "l3"]:
         set_norm_eps(model, 1e-7)
 

@@ -59,9 +59,6 @@ class EfficientViTCls(nn.Module):
     def __init__(self, 
                  backbone: EfficientViTBackbone or EfficientViTLargeBackbone or EfficientViTBackboneQuant, 
                  head: ClsHead,
-                 
-                 
-                 
                  ) -> None:
         super().__init__()
         self.backbone = backbone
@@ -105,7 +102,25 @@ class EfficientViTCls(nn.Module):
             #if self.cfg.INT_NORM:
              #   if type(m) in [QIntLayerNorm]:
               #      m.mode = 'int'
+        #for m in self.modules():
+        #    if isinstance(m, QMBConv):
+                # m is an instance of QMBConv
+         #   elif isinstance(m, QConvLayer):
+                # m is an instance of QConvLayer
     
+    def toggle_quant_weihts_on(self):
+        #todo
+        return None
+    
+    def toggle_quant_norms_on(self):
+        #todo
+        return None
+    
+    def toggle_quant_weights_on(self):
+        #todo
+        return None
+
+
     def toggle_quant_off(self):
         for m in self.modules():
             if type(m) in [QConvLayer, QLinearLayer]:
@@ -113,7 +128,6 @@ class EfficientViTCls(nn.Module):
             #if self.cfg.INT_NORM:
              #   if type(m) in [QIntLayerNorm]:
               #      m.mode = 'int'
-
 
 
 def efficientvit_cls_b0(**kwargs) -> EfficientViTCls:
@@ -221,12 +235,12 @@ def efficientvit_cls_b1_quant(**kwargs) -> EfficientViTCls:
     from efficientvit.models.efficientvit.backbone import efficientvit_backbone_b1_quant
 
     # Step 3: call for a quantized backbone
-    backbone = efficientvit_backbone_b1_quant(**kwargs)
+    backbone = efficientvit_backbone_b1_quant(**kwargs) #config=config gets passed on
 
     head = ClsHead(
         in_channels=256,
         width_list=[1536, 1600],
-        **build_kwargs_from_config(kwargs, ClsHead),
+        **build_kwargs_from_config(kwargs, ClsHead), #config=config does NOT get passed on
     )
     model = EfficientViTCls(backbone, head)
     return model

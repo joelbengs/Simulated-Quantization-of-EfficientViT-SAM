@@ -17,6 +17,7 @@ from tqdm import tqdm
 from efficientvit.apps.utils import AverageMeter
 from efficientvit.cls_model_zoo import create_cls_model
 
+from quant_config import Config
 
 def accuracy(output: torch.Tensor, target: torch.Tensor, topk=(1,)) -> list[torch.Tensor]:
     maxk = max(topk)
@@ -46,9 +47,19 @@ def main():
     parser.add_argument("--weight_url", type=str, default=None)
     # quantization arguments
     parser.add_argument("--quantize", action="store_true") # just flag --quantize to turn on quantization
+    parser.add_argument("--quantize-weights", action="store_true") # just flag --quantize-weights to turn on quantization of weights
+    parser.add_argument("--quantize-activations", action="store_true") # just flag --quantize-activations to turn on quantization of activations
+    parser.add_argument("--quantize-norms", action="store_true") # just flag --quantize-norms to turn on quantization of norms
     parser.add_argument('--calib-batchsize', default=50,type=int,help='batchsize of calibration set') # FQ-ViT used 100, not 50
     parser.add_argument('--calib-iter', default=10, type=int)
-    args = parser.parse_args()
+    parser.add_argument('--ptf', default=False, action='store_true') # Toggle Power-of-Two Factor, a method for LayerNorm Q
+    parser.add_argument('--lis', default=False, action='store_true') # Toggle Log-Int-Softmax, a method for Softmax Q
+    parser.add_argument('--quant-method',
+                    default='minmax',
+                    choices=['minmax', 'ema', 'omse', 'percentile']) # Choose calibration strategy
+    args = parser.parse_args() # replaces hyphens - with undescores _
+
+    config = Config(ptf=args.ptf, lis=args.lis, quant_method=args.quant_method)
 
     '''
     # GPU connection
@@ -88,7 +99,7 @@ def main():
     if args.quantize: calib_data_loader = val_data_loader # Using validation data now - must change to training data!
 
     # Model creation
-    model = create_cls_model(args.model, weight_url=args.weight_url)
+    model = create_cls_model(args.model, weight_url=args.weight_url, config=config)
     # Model to device
     model = torch.nn.DataParallel(model).cuda() # wrapper -> To reach the model's own methods, call model.module.method
     # Model to inference mode
@@ -150,7 +161,7 @@ def validate(args, val_data_loader, model):
             # measure elapsed time
             end_time = time.time()
 
-    print(f"Results from validation of {args.model} on {args.path}")
+    print(f"Results from validation of {args.model} on {args.path} {'with --quantize' if args.quantize else ''}")
     print(f"Top1 Acc = {top1.avg:.6f}, Top5 Acc = {top5.avg:.6f}, Time = {str(timedelta(seconds=int(end_time - start_time)))}")
 
 # prints the first 10 model params

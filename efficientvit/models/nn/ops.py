@@ -257,7 +257,7 @@ class MBConv(nn.Module):
         x = self.point_conv(x)
         return x
 
-
+# used in the Large backbone, and in SAM
 class FusedMBConv(nn.Module):
     def __init__(
         self,
@@ -303,7 +303,7 @@ class FusedMBConv(nn.Module):
         x = self.point_conv(x)
         return x
 
-
+# used for SAM - it's a block from ResNet34
 class ResBlock(nn.Module):
     def __init__(
         self,
@@ -464,7 +464,7 @@ class LiteMLA(nn.Module):
 
         return out
 
-
+# wraps LiteMLA
 class EfficientViTBlock(nn.Module):
     def __init__(
         self,
@@ -484,7 +484,7 @@ class EfficientViTBlock(nn.Module):
                 heads_ratio=heads_ratio,
                 dim=dim,
                 norm=(None, norm),
-                scales=scales,
+                scales=scales, # act func never overriden!
             ),
             IdentityLayer(),
         )
@@ -508,7 +508,7 @@ class EfficientViTBlock(nn.Module):
 #                             Functional Blocks                                 #
 #################################################################################
 
-# Wrapper of other blocks
+# Wrapper of other blocks. Just a residual shortcut if called with identityLayer
 class ResidualBlock(nn.Module):
     def __init__(
         self,
@@ -541,7 +541,7 @@ class ResidualBlock(nn.Module):
                 res = self.post_act(res)
         return res
 
-# Concat and addition operations
+# Concat and addition operations - used for SAM
 class DAGBlock(nn.Module):
     def __init__(
         self,
@@ -619,13 +619,22 @@ class QConvLayer(nn.Module):
             norm="bn2d",
             act_func="relu",
             # custom arguments
-            quant=False,                       # defined at model level
-            calibrate=False,                   # defined at model level
-            last_calibrate=False,              # defined at module level, altered at model level
-            bit_type=BIT_TYPE_DICT['int8'],    # defined at module level
-            calibration_mode='layer_wise',
-            observer_str='minmax',
-            quantizer_str='uniform',):
+            quant=False,                       # altered at model level
+            quant_weights=False,
+            quant_activations=False,
+            quant_norms=False,
+            calibrate=False,                   # altered at model level
+            last_calibrate=False,              # altered at module level
+            bit_type=BIT_TYPE_DICT['int8'],    # defined here
+            calibration_mode_W='layer_wise',
+            calibration_mode_A='layer_wise',
+            calibration_mode_N='layer_wise',
+            observer_str_W='minmax',
+            quantizer_str_W='uniform',
+            observer_str_A='minmax',
+            quantizer_str_A='uniform',
+            observer_str_N='minmax',
+            quantizer_str_N='uniform',):
         
         super().__init__()
         padding = get_same_padding(kernel_size)
@@ -650,9 +659,9 @@ class QConvLayer(nn.Module):
         self.calibrate = calibrate
         self.last_calibrate = last_calibrate
         self.bit_type = bit_type
-        self.calibration_mode = calibration_mode
-        self.observer_str = observer_str
-        self.quantizer_str = quantizer_str
+        self.calibration_mode_w = calibration_mode_W
+        self.observer_str_w = observer_str_w
+        self.quantizer_str_w = quantizer_str_W
         self.module_type = 'conv_weight'
         observer_object = build_observer(self.observer_str, self.module_type, 
                                        self.bit_type, self.calibration_mode) # in FQ-ViT, this is saved as self.observer for no reason
