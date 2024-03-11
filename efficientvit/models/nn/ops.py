@@ -999,7 +999,7 @@ class QResBlock(nn.Module):
         return x
 
 # Not used in backbone.py directly, only via QEfficientVitBlock
-# Quantization not complete yet
+# Not Quantized yet!
 class QLiteMLA(nn.Module):
     r"""Lightweight multi-scale linear attention"""
 
@@ -1028,7 +1028,7 @@ class QLiteMLA(nn.Module):
         act_func = val2tuple(act_func, 2)
 
         self.dim = dim
-        self.qkv = QConvLayer(
+        self.qkv = ConvLayer(
             in_channels,
             3 * total_dim,
             1,
@@ -1054,7 +1054,7 @@ class QLiteMLA(nn.Module):
         )
         self.kernel_func = build_act(kernel_func, inplace=False)
 
-        self.proj = QConvLayer(
+        self.proj = ConvLayer(
             total_dim * (1 + len(scales)),
             out_channels,
             1,

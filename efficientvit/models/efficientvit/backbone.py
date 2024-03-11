@@ -38,9 +38,15 @@ __all__ = [
     "efficientvit_backbone_l1",
     "efficientvit_backbone_l2",
     "efficientvit_backbone_l3",
-    #### quantized backbones ####
+    #### quantized backbones for CLS ####
     "EfficientViTBackboneQuant",
     "efficientvit_backbone_b1_quant",
+    #### quantized backbones for SAM ####
+    "EfficientViTLargeBackboneQuant",
+    "efficientvit_backbone_l0_quant",
+    "efficientvit_backbone_l1_quant",
+    "efficientvit_backbone_l2_quant",
+    "efficientvit_backbone_l3_quant", # never used
 ]
 
 # width_list=[
@@ -402,6 +408,9 @@ def efficientvit_backbone_l3(**kwargs) -> EfficientViTLargeBackbone:
     )
     return backbone
 
+######################################################################
+#                         Quantized classification                   #
+######################################################################
 
 class EfficientViTBackboneQuant(nn.Module):
     def __init__(
@@ -608,5 +617,211 @@ def efficientvit_backbone_b1_quant(**kwargs) -> EfficientViTBackboneQuant:
         dim=16,
         # filter the kwargs dict to match what EfficientVitBackboneQuant expects, and unpack the result with **
         **build_kwargs_from_config(kwargs, EfficientViTBackboneQuant),
+    )
+    return backbone
+
+######################################################################
+#                            Quantized SAM                           #
+######################################################################
+
+class EfficientViTLargeBackboneQuant(nn.Module):
+    def __init__(
+        self,
+        width_list: list[int],
+        depth_list: list[int],
+        block_list: list[str] or None = None,
+        expand_list: list[float] or None = None,
+        fewer_norm_list: list[bool] or None = None,
+        in_channels=3,                                  #RGB
+        qkv_dim=32,
+        norm="bn2d",                                    # Default normalization type
+        act_func="gelu",                                # default activation type           
+    ) -> None:
+        super().__init__()
+        # configure block types
+        block_list = block_list or ["res", "fmb", "fmb", "mb", "att"] # overridden in XL-models to ["res", "fmb", "fmb", "fmb", "att@3", "att@3"]
+        # controls expansion in convolutions. 1 -> DSConv
+        expand_list = expand_list or [1, 4, 4, 4, 6]                  # overriden in XL-models to [1, 4, 4, 4, 4, 6]
+        fewer_norm_list = fewer_norm_list or [False, False, False, True, True] # overriden in XL-models to [False, False, False, False, True, True]
+
+        self.width_list = []
+        self.stages = []
+        
+        #################################################################################
+        #                       Input Stem of EfficientViT-SAM                          #
+        #          One Convolution + One or zero ResBlocks (model XL0 has zero)         #
+        #################################################################################
+
+        stage0 = [
+            ConvLayer(
+                in_channels=3,              # RGB input
+                out_channels=width_list[0], # width_list=[16, _, _, _, _] --> 16 kernels
+                stride=2,                   # Stride 2
+                norm=norm,
+                act_func=act_func,
+            )
+        ]
+
+        # Residual blocks - specifically depth_list[0] number of ResBlocks
+        for _ in range(depth_list[0]):
+            block = self.build_local_block(
+                block=block_list[0],            # always "res" = ResBlock
+                in_channels=width_list[0],
+                out_channels=width_list[0],
+                stride=1,
+                expand_ratio=expand_list[0],    # Does not cause DSConv, as in Classification
+                norm=norm,
+                act_func=act_func,
+                fewer_norm=fewer_norm_list[0],  # False
+            )
+            stage0.append(ResidualBlock(block, IdentityLayer())) # residual connection for each block
+        # save the channel depth at output of the stem
+        in_channels = width_list[0]
+        self.stages.append(OpSequential(stage0))
+        self.width_list.append(in_channels)
+
+        #################################################################################
+        #                         All other stages of EfficientViT-SAM                  #
+        #        (MBConv OR Fused-MBConv) + (Attention OR MBconv OR Fused-MBConv)       #
+        #################################################################################
+
+        # A stage = a sequence of blocks.
+        # A block = a build_local_block NOT wrapped in a ResidualBlock.
+
+        # for all stages except the input stage
+        for stage_id, (w, d) in enumerate(zip(width_list[1:], depth_list[1:]), start=1):
+            stage = []
+            # Start with MBConb or Fused-MBConv, nothing else allowed
+            block = self.build_local_block(
+                block="mb" if block_list[stage_id] not in ["mb", "fmb"] else block_list[stage_id],
+                in_channels=in_channels,
+                out_channels=w,
+                stride=2,
+                expand_ratio=expand_list[stage_id] * 4, # Can't be DSConv
+                norm=norm,
+                act_func=act_func,
+                fewer_norm=fewer_norm_list[stage_id],
+            )
+            stage.append(ResidualBlock(block, None)) #NO RESIDUAL CONNECTION for the first block
+            in_channels = w
+
+            # Build many more blocks, either attention or convolutions
+            for _ in range(d):
+                if block_list[stage_id].startswith("att"):
+                    stage.append(
+                        EfficientViTBlock(
+                            in_channels=in_channels,
+                            dim=qkv_dim,
+                            expand_ratio=expand_list[stage_id],
+                            scales=(3,) if block_list[stage_id] == "att@3" else (5,),
+                            norm=norm,
+                            act_func=act_func,
+                        )
+                    )
+                else: # build MBConv or FMBConv
+                    block = self.build_local_block(
+                        block=block_list[stage_id],
+                        in_channels=in_channels,
+                        out_channels=in_channels,
+                        stride=1,
+                        expand_ratio=expand_list[stage_id],
+                        norm=norm,
+                        act_func=act_func,
+                        fewer_norm=fewer_norm_list[stage_id],
+                    )
+                    block = ResidualBlock(block, IdentityLayer()) # Residual connection for each other block
+                    stage.append(block)
+            self.stages.append(OpSequential(stage))
+            self.width_list.append(in_channels)
+        self.stages = nn.ModuleList(self.stages)
+        print("One Large Quantized backbone built")
+
+    #################################################################################
+    #                               Local block builder                             #
+    #################################################################################
+    @staticmethod
+    def build_local_block(
+        block: str,
+        in_channels: int,
+        out_channels: int,
+        stride: int,
+        expand_ratio: float,
+        norm: str,
+        act_func: str,
+        fewer_norm: bool = False,
+    ) -> nn.Module:
+        if block == "res":
+            block = QResBlock(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                stride=stride,
+                use_bias=(True, False) if fewer_norm else False,
+                norm=(None, norm) if fewer_norm else norm,
+                act_func=(act_func, None),
+            )
+        elif block == "fmb":
+            block = QFusedMBConv(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                stride=stride,
+                expand_ratio=expand_ratio,
+                use_bias=(True, False) if fewer_norm else False,
+                norm=(None, norm) if fewer_norm else norm,
+                act_func=(act_func, None),
+            )
+        elif block == "mb":
+            block = QMBConv(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                stride=stride,
+                expand_ratio=expand_ratio,
+                use_bias=(True, True, False) if fewer_norm else False,
+                norm=(None, None, norm) if fewer_norm else norm,
+                act_func=(act_func, act_func, None),
+            )
+        else:
+            raise ValueError(block)
+        return block
+
+    def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
+        output_dict = {"input": x}
+        for stage_id, stage in enumerate(self.stages):
+            output_dict["stage%d" % stage_id] = x = stage(x)
+        output_dict["stage_final"] = x
+        return output_dict
+
+
+def efficientvit_backbone_l0_quant(**kwargs) -> EfficientViTLargeBackboneQuant:
+    backbone = EfficientViTLargeBackboneQuant(
+        width_list=[32, 64, 128, 256, 512],
+        depth_list=[1, 1, 1, 4, 4],
+        **build_kwargs_from_config(kwargs, EfficientViTLargeBackboneQuant),
+    )
+    return backbone
+
+
+def efficientvit_backbone_l1_quant(**kwargs) -> EfficientViTLargeBackboneQuant:
+    backbone = EfficientViTLargeBackboneQuant(
+        width_list=[32, 64, 128, 256, 512],
+        depth_list=[1, 1, 1, 6, 6],
+        **build_kwargs_from_config(kwargs, EfficientViTLargeBackboneQuant),
+    )
+    return backbone
+
+
+def efficientvit_backbone_l2_quant(**kwargs) -> EfficientViTLargeBackboneQuant:
+    backbone = EfficientViTLargeBackboneQuant(
+        width_list=[32, 64, 128, 256, 512],
+        depth_list=[1, 2, 2, 8, 8],
+        **build_kwargs_from_config(kwargs, EfficientViTLargeBackboneQuant),
+    )
+    return backbone
+
+# never used as no l3 model exist
+def efficientvit_backbone_l3_quant(**kwargs) -> EfficientViTLargeBackboneQuant:
+    backbone = EfficientViTLargeBackboneQuant(
+        width_list=[64, 128, 256, 512, 1024],
+        depth_list=[1, 2, 2, 8, 8],
+        **build_kwargs_from_config(kwargs, EfficientViTLargeBackboneQuant),
     )
     return backbone
