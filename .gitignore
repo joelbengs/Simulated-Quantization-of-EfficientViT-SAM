@@ -4,6 +4,8 @@ __pycache__/
 .dev/
 .exp/
 
+assets/checkpoints
 assets/checkpoints/
 assets/export_models/
-coco/
+assets/coco/
+assets/imagenet/
