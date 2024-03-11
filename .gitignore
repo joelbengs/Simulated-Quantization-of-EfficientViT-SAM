@@ -9,3 +9,6 @@ assets/checkpoints/
 assets/export_models/
 assets/coco/
 assets/imagenet/
+
+coco
+imagenet
