@@ -1,0 +1,50 @@
+
+Ground Truth Bounding Box - L0 model
+
+torchrun --nproc_per_node=2 eval_sam_model.py --dataset coco --image_root coco/val2017 --annota
+tion_json_file coco/annotations/instances_val2017.json --model l0 --prompt_type box
+
+100%|████████████| 2500/2500 [01:54<00:00, 21.93it/s]
+all=78.509, large=82.759, medium=80.757, small=74.194
+100%|████████████| 2500/2500 [02:02<00:00, 20.43it/s]
+all=78.835, large=82.719, medium=81.275, small=74.576
+100%|████████████| 2500/2500 [02:12<00:00, 18.90it/s]
+all=79.130, large=83.056, medium=81.502, small=74.902
+100%|████████████| 2500/2500 [03:20<00:00, 12.49it/s]
+all=79.752, large=83.683, medium=81.923, small=75.687
+100%|████████████| 2500/2500 [04:35<00:00,  9.08it/s]
+all=79.930, large=83.758, medium=82.211, small=75.835
+
+
+Detected Bounding Box, XL1 model
+
+torchrun --nproc_per_node=2 eval_sam_model.py --dataset coco --image_root coco/val2017 --annotation_json_file coco/annotations/instances_val2017.json --model xl1 --weight_url assets/checkpoints/sam/xl1.pt --prompt_type box_from_detector --source_json_file coco/source_json_file/coco_vitdet.json
+
+100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 2500/2500 [05:45<00:00,  7.24it/s]
+loading annotations into memory...
+Done (t=0.30s)
+creating index...
+index created!
+Loading and preparing results...
+DONE (t=0.72s)
+creating index...
+index created!
+Running per image evaluation...
+Evaluate annotation type *segm*
+DONE (t=18.03s).
+Accumulating evaluation results...
+DONE (t=2.35s).
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.478
+ Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ] = 0.727
+ Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ] = 0.518
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.305
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.518
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.647
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=  1 ] = 0.356
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 10 ] = 0.565
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.589
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.439
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.637
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.730
+
+
