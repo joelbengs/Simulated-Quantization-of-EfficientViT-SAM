@@ -161,13 +161,13 @@ def calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank):
     efficientvit_sam = efficientvit_sam.cuda(local_rank).eval()                 # move model to correct GPU, and turn on eval mode
     predictor = EfficientViTSamPredictor(efficientvit_sam)                      # create predictor
   
-    efficientvit_sam.module.toggle_calibrate_on()                                          # sets calibrate = true for all 'relevant' modules
+    efficientvit_sam.toggle_calibrate_on()                               # sets calibrate = true for all 'relevant' modules
 
     for i, data in enumerate(tqdm(dataloader, disable=local_rank != 0)):        # for each batch of images
         if i == args.calib_iter:
             break                                          # default is 10 batches
         elif i == args.calib_iter - 1:
-            efficientvit_sam.module.toggle_last_calibrate_on()        # if last batch, set last_calibrate = true for all relevant modules
+            efficientvit_sam.toggle_last_calibrate_on()        # if last batch, set last_calibrate = true for all relevant modules
         data = data[0]                                                          # fetch the images?
         sam_image = np.array(Image.open(data["image_path"]).convert("RGB"))     # convert ot RGB image
         predictor.set_image(sam_image)                                          # send image to predictor
@@ -178,8 +178,8 @@ def calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank):
 
             bbox = np.array(bbox_xywh_to_xyxy(ann["bbox"]))                     # find bounding box - (i.e. the prompt)
             _ = predict_mask_from_box(predictor, bbox)                          # predict mask from bounding box
-    efficientvit_sam.module.toggle_calibrate_off()                                 # sets calibrate = false for all reelvant modules
-    efficientvit_sam.module.toggle_last_calibrate_off()                            # sets last_calibrate = false for all reelvant modules
+    efficientvit_sam.toggle_calibrate_off()                                 # sets calibrate = false for all reelvant modules
+    efficientvit_sam.toggle_last_calibrate_off()                            # sets last_calibrate = false for all reelvant modules
 
 
 def run_point(efficientvit_sam, dataloader, num_click, local_rank):
@@ -274,8 +274,8 @@ def evaluate(results, prompt_type, dataset, annotation_json_file=None):
     else:
         raise NotImplementedError()
 
-def quantize(model):
-    model.module.toggle_quant_on()                             # just sets module.quant = true (or = 'int'). Doesn't alter any weights!
+def quantize(efficientvit_sam):
+    efficientvit_sam.toggle_quant_on()                             # just sets module.quant = true (or = 'int'). Doesn't alter any weights!
 
 
 if __name__ == "__main__":
@@ -294,17 +294,22 @@ if __name__ == "__main__":
     parser.add_argument("--quant-method", default="minmax", choices=["minmax", "ema", "omse", "percentile"])
     parser.add_argument('--ptf', default=False, action='store_true') # Toggle Power-of-Two Factor, a method for LayerNorm Q - not in use yet
     parser.add_argument('--lis', default=False, action='store_true') # Toggle Log-Int-Softmax, a method for Softmax Q - not in use yet
+    parser.add_argument('--single_gpu', action='store_true', help="Force the use of a single gpu, might help in troubleshooting quantization")
 
     args = parser.parse_args()
     
     config = Config(ptf=args.ptf, lis=args.lis, quant_method=args.quant_method) # to be sent along to model later
 
-    local_rank = int(os.environ["LOCAL_RANK"])
-    torch.distributed.init_process_group(backend="nccl")
+    if args.single_gpu:
+        local_rank = 0
+        print("Using single GPU")
+    else:
+        local_rank = int(os.environ["LOCAL_RANK"])
+        torch.distributed.init_process_group(backend="nccl") # initializing the distributed environment 
+        if local_rank == 0: # only master process prints
+            print(f"Using {torch.distributed.get_world_size()} GPUs")
     torch.cuda.set_device(local_rank)
-    print("local_rank is: ", local_rank)
-
-
+    
     # model creation
     efficientvit_sam = create_sam_model(args.model, True, args.weight_url)
 
@@ -320,7 +325,7 @@ if __name__ == "__main__":
 
     # inference + calibration + quantization
     if args.prompt_type == "point":
-        if args.quantze:
+        if args.quantize:
             print("Calibrating point...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
             quantize(efficientvit_sam)
@@ -328,7 +333,7 @@ if __name__ == "__main__":
         results = run_point(efficientvit_sam, dataloader, args.num_click, local_rank)
 
     elif args.prompt_type == "box":
-        if args.quantze:
+        if args.quantize:
             print("Calibrating box...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
             quantize(efficientvit_sam)
@@ -336,7 +341,7 @@ if __name__ == "__main__":
         results = run_box(efficientvit_sam, dataloader, local_rank)
 
     elif args.prompt_type == "box_from_detector":
-        if args.quantze:
+        if args.quantize:
             print("Calibrating box_from_detector...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
             quantize(efficientvit_sam)

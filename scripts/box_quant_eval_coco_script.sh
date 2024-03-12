@@ -16,7 +16,7 @@ export OMP_NUM_THREADS=$((nb_cpu_threads / nproc_per_node))
 # Note: Time to execute was the same if this was =1 or =32
 
 # Define the model family and prompt type
-models=("l0")
+models=("l0_quant")
 prompt_type=box
 
 echo "Starting evaluation of models: ${models[*]} on prompt type: $prompt_type with --quantize"
@@ -24,7 +24,7 @@ echo "Starting evaluation of models: ${models[*]} on prompt type: $prompt_type w
 for model in "${models[@]}"
 do
   # Run the evaluation command for the current model - with --quantize flag on
-  torchrun --nproc_per_node=2 eval_sam_model.py --quantize --dataset coco --image_root coco/val2017 --annotation_json_file coco/annotations/instances_val2017.json --model $model --prompt_type $prompt_type
+  torchrun --nproc_per_node=2 eval_sam_model_joel.py --quantize --dataset coco --image_root coco/val2017 --annotation_json_file coco/annotations/instances_val2017.json --model $model --prompt_type $prompt_type
 done
 
 echo "Finished evaluation of models: ${models[*]} on prompt type: $prompt_type with --quantize"
