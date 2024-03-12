@@ -108,7 +108,12 @@ class EfficientViTCls(nn.Module):
          #   elif isinstance(m, QConvLayer):
                 # m is an instance of QConvLayer
     
-    def toggle_quant_weihts_on(self):
+    def toggle_quant_off(self):
+        for m in self.modules():
+            if type(m) in [QConvLayer, QLinearLayer]:
+                m.quant = False
+    
+    def toggle_quant_weights_on(self):
         #todo
         return None
     
@@ -116,18 +121,9 @@ class EfficientViTCls(nn.Module):
         #todo
         return None
     
-    def toggle_quant_weights_on(self):
+    def toggle_quant_activations_on(self):
         #todo
         return None
-
-
-    def toggle_quant_off(self):
-        for m in self.modules():
-            if type(m) in [QConvLayer, QLinearLayer]:
-                m.quant = True
-            #if self.cfg.INT_NORM:
-             #   if type(m) in [QIntLayerNorm]:
-              #      m.mode = 'int'
 
 
 def efficientvit_cls_b0(**kwargs) -> EfficientViTCls:

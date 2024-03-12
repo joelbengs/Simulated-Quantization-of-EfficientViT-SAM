@@ -29,6 +29,19 @@ from efficientvit.models.nn import (
     ResidualBlock,
     UpSampleLayer,
     build_norm,
+    ## quantized basic layers ##
+    QConvLayer,
+    QUpSampleLayer,
+    QLinearLayer,
+    QIdentityLayer,
+    ## quantized basic blocks ##
+    QDSConv,
+    QMBConv,
+    QFusedMBConv,
+    QResBlock,
+    QLiteMLA,
+    QEfficientViTBlock,
+    ## there are no quantized functional blocks ##
 )
 from efficientvit.models.utils import build_kwargs_from_config, get_device
 
@@ -241,7 +254,41 @@ class EfficientViTSam(nn.Module):
         masks = masks[..., : input_size[0], : input_size[1]]
         masks = F.interpolate(masks, original_size, mode="bilinear", align_corners=False)
         return masks
+    
+    ######################################################################
+    #                 Toggles functions for quantization                 #
+    ######################################################################
 
+    
+    def toggle_calibrate_on(self):
+        for m in self.modules():
+            if type(m) in [QConvLayer, QLinearLayer]:
+                m.calibrate = True
+
+    def toggle_calibrate_off(self):
+        for m in self.modules():
+            if type(m) in [QConvLayer, QLinearLayer]:
+                m.calibrate = False
+
+    def toggle_last_calibrate_on(self):
+        for m in self.modules():
+            if type(m) in [QConvLayer, QLinearLayer]:
+                m.last_calibrate = True
+
+    def toggle_last_calibrate_off(self):
+      for m in self.modules():
+            if type(m) in [QConvLayer, QLinearLayer]:
+                m.last_calibrate = False
+    
+    def toggle_quant_on(self):
+        for m in self.modules():
+            if type(m) in [QConvLayer, QLinearLayer]:
+                m.quant = True
+
+    def toggle_quant_off(self):
+        for m in self.modules():
+            if type(m) in [QConvLayer, QLinearLayer]:
+                m.quant = False
 
 class EfficientViTSamPredictor:
     def __init__(self, sam_model: EfficientViTSam) -> None:

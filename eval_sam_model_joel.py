@@ -19,6 +19,7 @@ from tqdm import tqdm
 from efficientvit.models.efficientvit.sam import EfficientViTSamPredictor
 from efficientvit.sam_model_zoo import create_sam_model
 from sam_eval_utils import Clicker, evaluate_predictions_on_coco, evaluate_predictions_on_lvis, get_iou_metric, iou
+from quant_config import Config
 
 
 def bbox_xywh_to_xyxy(bbox: list[int]) -> list[int]:
@@ -121,27 +122,27 @@ class eval_dataset(Dataset):
 def collate_fn(batch):
     return batch
 
-
+# Given a bounding box, let the model produce a mask and calculate meanIoU for each mask
 def run_box(efficientvit_sam, dataloader, local_rank):
-    efficientvit_sam = efficientvit_sam.cuda(local_rank).eval()
-    predictor = EfficientViTSamPredictor(efficientvit_sam)
+    efficientvit_sam = efficientvit_sam.cuda(local_rank).eval()                 # move model to correct GPU, and turn on eval mode
+    predictor = EfficientViTSamPredictor(efficientvit_sam)                      # create predictor
 
     output = []
-    for i, data in enumerate(tqdm(dataloader, disable=local_rank != 0)):
-        data = data[0]
-        sam_image = np.array(Image.open(data["image_path"]).convert("RGB"))
-        predictor.set_image(sam_image)
-        anns = data["anns"]
-        for ann in anns:
-            if ann["area"] < 1:
+    for i, data in enumerate(tqdm(dataloader, disable=local_rank != 0)):        # for each batch of images
+        data = data[0]                                                          # fetch the images?
+        sam_image = np.array(Image.open(data["image_path"]).convert("RGB"))     # convert ot RGB image
+        predictor.set_image(sam_image)                                          # send image to predictor
+        anns = data["anns"]                                                     # fetch annotations for the batch
+        for ann in anns:                                                        # for each annotation
+            if ann["area"] < 1:                                                 # skip of too small bounding box
                 continue
 
-            sam_mask = ann_to_mask(ann, sam_image.shape[0], sam_image.shape[1])
+            sam_mask = ann_to_mask(ann, sam_image.shape[0], sam_image.shape[1]) # find true mask
 
-            bbox = np.array(bbox_xywh_to_xyxy(ann["bbox"]))
-            pre_mask = predict_mask_from_box(predictor, bbox)
+            bbox = np.array(bbox_xywh_to_xyxy(ann["bbox"]))                     # find bounding box - (i.e. the prompt)
+            pre_mask = predict_mask_from_box(predictor, bbox)                   # predict mask from bounding box
 
-            miou = iou(pre_mask, sam_mask)
+            miou = iou(pre_mask, sam_mask)                                      # compare prediction to true mask
 
             result = {
                 "area": ann["area"],
@@ -151,9 +152,34 @@ def run_box(efficientvit_sam, dataloader, local_rank):
             output.append(result)
 
     world_size = int(os.environ["WORLD_SIZE"])
-    merged_outs = sync_output(world_size, output)
+    merged_outs = sync_output(world_size, output)                              # synchronice all processes and merge results
 
     return merged_outs
+
+
+def calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank):
+    efficientvit_sam = efficientvit_sam.cuda(local_rank).eval()                 # move model to correct GPU, and turn on eval mode
+    predictor = EfficientViTSamPredictor(efficientvit_sam)                      # create predictor
+  
+    efficientvit_sam.module.toggle_calibrate_on()                                          # sets calibrate = true for all 'relevant' modules
+
+    for i, data in enumerate(tqdm(dataloader, disable=local_rank != 0)):        # for each batch of images
+        if i == args.calib_iter:
+            break                                          # default is 10 batches
+        elif i == args.calib_iter - 1:
+            efficientvit_sam.module.toggle_last_calibrate_on()        # if last batch, set last_calibrate = true for all relevant modules
+        data = data[0]                                                          # fetch the images?
+        sam_image = np.array(Image.open(data["image_path"]).convert("RGB"))     # convert ot RGB image
+        predictor.set_image(sam_image)                                          # send image to predictor
+        anns = data["anns"]                                                     # fetch annotations for the batch
+        for ann in anns:                                                        # for each annotation
+            if ann["area"] < 1:                                                 # skip of too small bounding box
+                continue
+
+            bbox = np.array(bbox_xywh_to_xyxy(ann["bbox"]))                     # find bounding box - (i.e. the prompt)
+            _ = predict_mask_from_box(predictor, bbox)                          # predict mask from bounding box
+    efficientvit_sam.module.toggle_calibrate_off()                                 # sets calibrate = false for all reelvant modules
+    efficientvit_sam.module.toggle_last_calibrate_off()                            # sets last_calibrate = false for all reelvant modules
 
 
 def run_point(efficientvit_sam, dataloader, num_click, local_rank):
@@ -202,6 +228,10 @@ def run_point(efficientvit_sam, dataloader, num_click, local_rank):
     return merged_outs
 
 
+def calibrate_run_point(efficientvit_sam, calib_dataloader, args, local_rank):
+    raise NotImplementedError()
+
+
 def run_box_from_detector(efficientvit_sam, dataloader, local_rank):
     efficientvit_sam = efficientvit_sam.cuda(local_rank).eval()
     predictor = EfficientViTSamPredictor(efficientvit_sam)
@@ -226,6 +256,10 @@ def run_box_from_detector(efficientvit_sam, dataloader, local_rank):
     return merged_outs
 
 
+def calibrate_run_box_from_detector(efficientvit_sam, calib_dataloader, args, local_rank):
+    raise NotImplementedError()
+
+
 def evaluate(results, prompt_type, dataset, annotation_json_file=None):
     if prompt_type == "point" or prompt_type == "box":
         print(", ".join([f"{key}={val:.3f}" for key, val in get_iou_metric(results).items()]))
@@ -240,6 +274,9 @@ def evaluate(results, prompt_type, dataset, annotation_json_file=None):
     else:
         raise NotImplementedError()
 
+def quantize(model):
+    model.module.toggle_quant_on()                             # just sets module.quant = true (or = 'int'). Doesn't alter any weights!
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -252,11 +289,21 @@ if __name__ == "__main__":
     parser.add_argument("--annotation_json_file", type=str)
     parser.add_argument("--source_json_file", type=str, default=None)
     parser.add_argument("--num_workers", type=int, default=4)
+    parser.add_argument("--quantize", action="store_true", help="Turn on quantization and calibration")
+    parser.add_argument("--calib_iter", type=int, default=10)
+    parser.add_argument("--quant-method", default="minmax", choices=["minmax", "ema", "omse", "percentile"])
+    parser.add_argument('--ptf', default=False, action='store_true') # Toggle Power-of-Two Factor, a method for LayerNorm Q - not in use yet
+    parser.add_argument('--lis', default=False, action='store_true') # Toggle Log-Int-Softmax, a method for Softmax Q - not in use yet
+
     args = parser.parse_args()
+    
+    config = Config(ptf=args.ptf, lis=args.lis, quant_method=args.quant_method) # to be sent along to model later
 
     local_rank = int(os.environ["LOCAL_RANK"])
     torch.distributed.init_process_group(backend="nccl")
     torch.cuda.set_device(local_rank)
+    print("local_rank is: ", local_rank)
+
 
     # model creation
     efficientvit_sam = create_sam_model(args.model, True, args.weight_url)
@@ -269,17 +316,36 @@ if __name__ == "__main__":
     dataloader = DataLoader(
         dataset, batch_size=1, sampler=sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn
     )
+    calib_dataloader = dataloader # Using validation data now - must change to training data!
 
-    # inference
+    # inference + calibration + quantization
     if args.prompt_type == "point":
+        if args.quantze:
+            print("Calibrating point...")
+            calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
+            quantize(efficientvit_sam)
+
         results = run_point(efficientvit_sam, dataloader, args.num_click, local_rank)
+
     elif args.prompt_type == "box":
+        if args.quantze:
+            print("Calibrating box...")
+            calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
+            quantize(efficientvit_sam)
+
         results = run_box(efficientvit_sam, dataloader, local_rank)
+
     elif args.prompt_type == "box_from_detector":
+        if args.quantze:
+            print("Calibrating box_from_detector...")
+            calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
+            quantize(efficientvit_sam)
+
         results = run_box_from_detector(efficientvit_sam, dataloader, local_rank)
+
     else:
         raise NotImplementedError()
 
-    # evaluation
+    # evaluation - only done my the master process, not other parallell processes
     if local_rank == 0:
         evaluate(results, args.prompt_type, args.dataset, args.annotation_json_file)
