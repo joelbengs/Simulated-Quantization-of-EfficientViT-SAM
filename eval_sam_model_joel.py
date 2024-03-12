@@ -290,14 +290,21 @@ if __name__ == "__main__":
     parser.add_argument("--source_json_file", type=str, default=None)
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--quantize", action="store_true", help="Turn on quantization and calibration")
-    parser.add_argument("--calib_iter", type=int, default=10)
-    parser.add_argument("--quant-method", default="minmax", choices=["minmax", "ema", "omse", "percentile"])
+    parser.add_argument("--calib_iter", type=int, default=100)
+    parser.add_argument("--quant-method", default="minmax", choices=["minmax", "ema", "omse", "percentile"]) #TODO - implement this
     parser.add_argument('--ptf', default=False, action='store_true') # Toggle Power-of-Two Factor, a method for LayerNorm Q - not in use yet
     parser.add_argument('--lis', default=False, action='store_true') # Toggle Log-Int-Softmax, a method for Softmax Q - not in use yet
     parser.add_argument('--single_gpu', action='store_true', help="Force the use of a single gpu, might help in troubleshooting quantization")
 
     args = parser.parse_args()
     
+    # TODO: implement different calibration types
+    # TODO: Implement for all three val types
+    # TODO: Get coco traindata for calibration
+    # TODO: Start building different backbones for quant of different parts
+    # TODO: Quantize norms and activations, i.e. make the config work.
+
+
     config = Config(ptf=args.ptf, lis=args.lis, quant_method=args.quant_method) # to be sent along to model later
 
     if args.single_gpu:
