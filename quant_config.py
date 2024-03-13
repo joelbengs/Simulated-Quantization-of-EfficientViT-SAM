@@ -14,8 +14,7 @@ class Config:
         self.TEST_STR = "Config did get through to first QConvLayer!"
         self.TEST_STR_RESBLOCK = "Config did get through to ResBlock via Kwargs!"
 
-
-        self.OBSERVER_STR='minmax' # default
+        self.OBSERVER_STR='omse' # default
         self.OBSERVER_W = quant_method_W
         self.OBSERVER_A = quant_method_A
 

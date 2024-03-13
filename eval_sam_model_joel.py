@@ -1,3 +1,4 @@
+
 # EfficientViT: Multi-Scale Linear Attention for High-Resolution Dense Prediction
 # Han Cai, Junyan Li, Muyan Hu, Chuang Gan, Song Han
 # International Conference on Computer Vision (ICCV), 2023
@@ -286,13 +287,14 @@ if __name__ == "__main__":
     parser.add_argument("--num_click", type=int, default=1)
     parser.add_argument("--dataset", type=str, choices=["coco", "lvis"])
     parser.add_argument("--image_root", type=str)
+    parser.add_argument("--image_root_calibration", type=str, default="coco/minitrain2017")
     parser.add_argument("--annotation_json_file", type=str)
     parser.add_argument("--source_json_file", type=str, default=None)
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--quantize", action="store_true", help="Turn on quantization and calibration")
     parser.add_argument("--calib_iter", type=int, default=100)
-    parser.add_argument("--quant-method-W", default="minmax", choices=["minmax", "ema", "omse", "percentile"]) #TODO - implement this
-    parser.add_argument("--quant-method-A", default="minmax", choices=["minmax", "ema", "omse", "percentile"])
+    parser.add_argument("--quant-method-W", default="minmax", choices=["minmax", "ema", "omse", "percentile"])
+    parser.add_argument("--quant-method-A", default="minmax", choices=["minmax", "ema", "omse", "percentile"]) #TODO - implement this
     parser.add_argument('--single_gpu', action='store_true', help="Force the use of a single gpu, might help in troubleshooting quantization")
 
     args = parser.parse_args()
@@ -327,7 +329,19 @@ if __name__ == "__main__":
     dataloader = DataLoader(
         dataset, batch_size=1, sampler=sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn
     )
-    calib_dataloader = dataloader # Using validation data now - must change to training data!
+
+    # calibration dataset
+    if args.quantize:
+        print("Loading minitrain dataset")
+        calib_dataset = eval_dataset(
+            args.dataset, args.image_root_calibration. args.prompt_type, args.__annotation_json_file, args.source_json_file
+        )
+        calib_sampler = DistributedSampler(calib_dataset, shuffle=False)
+        calib_dataloader = DataLoader(
+            calib_dataset, batch_size=1, sampler=sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn
+        )
+
+    #calib_dataloader = dataloader # Using validation data now - must change to training data!
 
     # inference + calibration + quantization
     if args.prompt_type == "point":

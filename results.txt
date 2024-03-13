@@ -20,6 +20,7 @@ all=79.752, large=83.683, medium=81.923, small=75.687
 100%|████████████| 2500/2500 [04:35<00:00,  9.08it/s]
 all=79.930, large=83.758, medium=82.211, small=75.835
 
+QUANTIZED
 "Starting evaluation of models: l0_quant l1_quant l2_quant xl0_quant xl1_quant on prompt type: box with --quantize
 Quantized weights in convlayers, except input layer, and except all attention stages.
 Calibrated with minmax on just 10 or 100 images from val2017 (changed by mistake in the middle)
@@ -36,8 +37,12 @@ xl1_quant calib on 100 images
 all=74.125, large=75.204, medium=75.313, small=72.524
 
 
-
-
+SOME More QUANTIZED results
+l0_quant with ConvQuant everywhere except in attention stages.
+All default
+all=49.705, large=55.944, medium=48.250, small=47.276
+omse calib isntead
+all=50.802, large=56.170, medium=50.123, small=48.240
 
 
 

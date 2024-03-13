@@ -1,4 +1,4 @@
-# Copyright (c) MEGVII Inc. and its affiliates. All Rights Reserved.
+fred again# Copyright (c) MEGVII Inc. and its affiliates. All Rights Reserved.
 import torch
 
 from .base import BaseQuantizer

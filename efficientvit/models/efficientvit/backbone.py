@@ -646,7 +646,7 @@ class EfficientViTLargeBackboneQuant(nn.Module):
         # controls expansion in convolutions. 1 -> DSConv
         expand_list = expand_list or [1, 4, 4, 4, 6]                  # overriden in XL-models to [1, 4, 4, 4, 4, 6]
         fewer_norm_list = fewer_norm_list or [False, False, False, True, True] # overriden in XL-models to [False, False, False, False, True, True]
-
+                                                                               # so always true for the last two stages
         self.width_list = []
         self.stages = []
         
@@ -707,16 +707,16 @@ class EfficientViTLargeBackboneQuant(nn.Module):
         # for all stages except the input stage
         for stage_id, (w, d) in enumerate(zip(width_list[1:], depth_list[1:]), start=1):
             stage = []
-            # Start with MBConb or Fused-MBConv, nothing else allowed
+            # Start with ONE MBConb or Fused-MBConv, nothing else allowed
             block = self.build_local_block(
                 block="mb" if block_list[stage_id] not in ["mb", "fmb"] else block_list[stage_id],
                 in_channels=in_channels,
                 out_channels=w,
                 stride=2,
-                expand_ratio=expand_list[stage_id] * 4, # Can't be DSConv
+                expand_ratio=expand_list[stage_id] * 4, # The first block in each of these stages have 4x larger expansion
                 norm=norm,
                 act_func=act_func,
-                fewer_norm=fewer_norm_list[stage_id],
+                fewer_norm=fewer_norm_list[stage_id],   # only true in the alst two stages
             )
             stage.append(ResidualBlock(block, None)) #NO RESIDUAL CONNECTION for the first block
             in_channels = w
@@ -743,7 +743,7 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                         expand_ratio=expand_list[stage_id],
                         norm=norm,
                         act_func=act_func,
-                        fewer_norm=fewer_norm_list[stage_id],
+                        fewer_norm=fewer_norm_list[stage_id],      # only true in the last two stages
                     )
                     block = ResidualBlock(block, IdentityLayer()) # Residual connection for each other block
                     stage.append(block)
@@ -772,9 +772,9 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                 in_channels=in_channels,
                 out_channels=out_channels,
                 stride=stride,
-                use_bias=(True, False) if fewer_norm else False,
-                norm=(None, norm) if fewer_norm else norm,
-                act_func=(act_func, None),
+                use_bias=(True, False) if fewer_norm else False,    # only true in the last two stages
+                norm=(None, norm) if fewer_norm else norm,          # only true in the last two stages - else norm gets converted to a tuple of lenght 3
+                act_func=(act_func, None),                          # blocks always end without an activation function
                 **kwargs, # config arguments
             )
         elif block == "fmb":
@@ -783,9 +783,9 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                 out_channels=out_channels,
                 stride=stride,
                 expand_ratio=expand_ratio,
-                use_bias=(True, False) if fewer_norm else False,
-                norm=(None, norm) if fewer_norm else norm,
-                act_func=(act_func, None),
+                use_bias=(True, False) if fewer_norm else False,    # only true in the last two stages
+                norm=(None, norm) if fewer_norm else norm,          # only true in the last two stages - else norm gets converted to a tuple of lenght 3
+                act_func=(act_func, None),                          # blocks always end without an activation function
                 **kwargs, # config arguments
             )
         elif block == "mb":
@@ -794,9 +794,9 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                 out_channels=out_channels,
                 stride=stride,
                 expand_ratio=expand_ratio,
-                use_bias=(True, True, False) if fewer_norm else False,
-                norm=(None, None, norm) if fewer_norm else norm,
-                act_func=(act_func, act_func, None),
+                use_bias=(True, True, False) if fewer_norm else False, # only true in the last two stages
+                norm=(None, None, norm) if fewer_norm else norm,       # only true in the last two stages - else norm gets converted to a tuple of lenght 3
+                act_func=(act_func, act_func, None),                   # blocks always end without an activation function
                 **kwargs, # config arguments
             )
         else:

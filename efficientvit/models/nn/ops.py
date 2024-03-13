@@ -871,7 +871,8 @@ class QMBConv(nn.Module):
         **kwargs, # config arguments
     ):
         super().__init__()
-
+        
+        # if apssed a singular norm,  bias or act, convert into tuple of length 3
         use_bias = val2tuple(use_bias, 3)
         norm = val2tuple(norm, 3)
         act_func = val2tuple(act_func, 3)
@@ -1045,9 +1046,9 @@ class QLiteMLA(nn.Module):
             in_channels,
             3 * total_dim,
             1,
-            use_bias=use_bias[0],
-            norm=norm[0],
-            act_func=act_func[0],
+            use_bias=use_bias[0], # False
+            norm=norm[0],         # override to b2nd
+            act_func=act_func[0], # override to Gelu
         )
         self.aggreg = nn.ModuleList(
             [
@@ -1072,8 +1073,8 @@ class QLiteMLA(nn.Module):
             out_channels,
             1,
             use_bias=use_bias[1],
-            norm=norm[1],
-            act_func=act_func[1],
+            norm=norm[1],         # override to bn2d
+            act_func=act_func[1], # override to gelu
         )
 
     @autocast(enabled=False)
