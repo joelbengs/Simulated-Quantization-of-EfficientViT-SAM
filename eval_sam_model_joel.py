@@ -291,9 +291,8 @@ if __name__ == "__main__":
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--quantize", action="store_true", help="Turn on quantization and calibration")
     parser.add_argument("--calib_iter", type=int, default=100)
-    parser.add_argument("--quant-method", default="minmax", choices=["minmax", "ema", "omse", "percentile"]) #TODO - implement this
-    parser.add_argument('--ptf', default=False, action='store_true') # Toggle Power-of-Two Factor, a method for LayerNorm Q - not in use yet
-    parser.add_argument('--lis', default=False, action='store_true') # Toggle Log-Int-Softmax, a method for Softmax Q - not in use yet
+    parser.add_argument("--quant-method-W", default="minmax", choices=["minmax", "ema", "omse", "percentile"]) #TODO - implement this
+    parser.add_argument("--quant-method-A", default="minmax", choices=["minmax", "ema", "omse", "percentile"])
     parser.add_argument('--single_gpu', action='store_true', help="Force the use of a single gpu, might help in troubleshooting quantization")
 
     args = parser.parse_args()
@@ -305,7 +304,7 @@ if __name__ == "__main__":
     # TODO: Quantize norms and activations, i.e. make the config work.
 
 
-    config = Config(ptf=args.ptf, lis=args.lis, quant_method=args.quant_method) # to be sent along to model later
+    config = Config(args.quant_method_W, args.quant_method_A) # quantization configuration
 
     if args.single_gpu:
         local_rank = 0
@@ -318,7 +317,7 @@ if __name__ == "__main__":
     torch.cuda.set_device(local_rank)
     
     # model creation
-    efficientvit_sam = create_sam_model(args.model, True, args.weight_url)
+    efficientvit_sam = create_sam_model(name=args.model, pretrained=True, weight_url=args.weight_url, config=config)
 
     # dataset creation
     dataset = eval_dataset(

@@ -635,9 +635,12 @@ class EfficientViTLargeBackboneQuant(nn.Module):
         in_channels=3,                                  #RGB
         qkv_dim=32,
         norm="bn2d",                                    # Default normalization type
-        act_func="gelu",                                # default activation type           
+        act_func="gelu",                                # default activation type
+        config=None,                                    # config gets passed as an (unpacked?) keywordargument
     ) -> None:
         super().__init__()
+
+        self.config=config
         # configure block types
         block_list = block_list or ["res", "fmb", "fmb", "mb", "att"] # overridden in XL-models to ["res", "fmb", "fmb", "fmb", "att@3", "att@3"]
         # controls expansion in convolutions. 1 -> DSConv
@@ -652,17 +655,24 @@ class EfficientViTLargeBackboneQuant(nn.Module):
         #          One Convolution + One or zero ResBlocks (model XL0 has zero)         #
         #################################################################################
 
+        # First Convolution
         stage0 = [
-            ConvLayer(
+            QConvLayer(
                 in_channels=3,              # RGB input
                 out_channels=width_list[0], # width_list=[16, _, _, _, _] --> 16 kernels
                 stride=2,                   # Stride 2
                 norm=norm,
                 act_func=act_func,
+                # configs
+                bit_type=config.BIT_TYPE,
+                calibration_mode=config.CALIBRATION_MODE,
+                observer_str=config.OBSERVER_STR,
+                quantizer_str=config.QUANTIZER_STR,
+                test_str=config.TEST_STR,
             )
         ]
 
-        # Residual blocks - specifically depth_list[0] number of ResBlocks
+        # "ResBlocks" from ResNet34 - specifically depth_list[0] number of ResBlocks
         for _ in range(depth_list[0]):
             block = self.build_local_block(
                 block=block_list[0],            # always "res" = ResBlock
@@ -670,9 +680,15 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                 out_channels=width_list[0],
                 stride=1,
                 expand_ratio=expand_list[0],    # Does not cause DSConv, as in Classification
-                norm=norm,
-                act_func=act_func,
+                norm=norm,                      # None, b2nd
+                act_func=act_func,              # gelu, None
                 fewer_norm=fewer_norm_list[0],  # False
+                # configs
+                bit_type=config.BIT_TYPE,
+                calibration_mode=config.CALIBRATION_MODE,
+                observer_str=config.OBSERVER_STR,
+                quantizer_str=config.QUANTIZER_STR,
+                test_str=config.TEST_STR_RESBLOCK,
             )
             stage0.append(ResidualBlock(block, IdentityLayer())) # residual connection for each block
         # save the channel depth at output of the stem
@@ -749,6 +765,7 @@ class EfficientViTLargeBackboneQuant(nn.Module):
         norm: str,
         act_func: str,
         fewer_norm: bool = False,
+        **kwargs, # config arguments
     ) -> nn.Module:
         if block == "res":
             block = QResBlock(
@@ -758,6 +775,7 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                 use_bias=(True, False) if fewer_norm else False,
                 norm=(None, norm) if fewer_norm else norm,
                 act_func=(act_func, None),
+                **kwargs, # config arguments
             )
         elif block == "fmb":
             block = QFusedMBConv(
@@ -768,6 +786,7 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                 use_bias=(True, False) if fewer_norm else False,
                 norm=(None, norm) if fewer_norm else norm,
                 act_func=(act_func, None),
+                **kwargs, # config arguments
             )
         elif block == "mb":
             block = QMBConv(
@@ -778,6 +797,7 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                 use_bias=(True, True, False) if fewer_norm else False,
                 norm=(None, None, norm) if fewer_norm else norm,
                 act_func=(act_func, act_func, None),
+                **kwargs, # config arguments
             )
         else:
             raise ValueError(block)

@@ -622,10 +622,12 @@ class QConvLayer(nn.Module):
             quant=False,                       # defined at model level
             calibrate=False,                   # defined at model level
             last_calibrate=False,              # defined at module level, altered at model level
-            bit_type=BIT_TYPE_DICT['int8'],    # defined at module level
+            bit_type=BIT_TYPE_DICT['int8'],
             calibration_mode='layer_wise',
             observer_str='minmax',
-            quantizer_str='uniform',):
+            quantizer_str='uniform',
+            test_str=None,
+        ):
         
         super().__init__()
         padding = get_same_padding(kernel_size)
@@ -658,7 +660,8 @@ class QConvLayer(nn.Module):
                                        self.bit_type, self.calibration_mode) # in FQ-ViT, this is saved as self.observer for no reason
         self.quantizer = build_quantizer(self.quantizer_str, self.bit_type,
                                           observer_object, self.module_type)
-        #print("One QConvLayer built")
+        if test_str:
+            print(test_str)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # calibrate
@@ -865,6 +868,7 @@ class QMBConv(nn.Module):
         use_bias=False,
         norm=("bn2d", "bn2d", "bn2d"),
         act_func=("relu6", "relu6", None),
+        **kwargs, # config arguments
     ):
         super().__init__()
 
@@ -881,6 +885,7 @@ class QMBConv(nn.Module):
             norm=norm[0],
             act_func=act_func[0],
             use_bias=use_bias[0],
+            **kwargs, # config arguments
         )
         self.depth_conv = QConvLayer(
             mid_channels,
@@ -891,6 +896,7 @@ class QMBConv(nn.Module):
             norm=norm[1],
             act_func=act_func[1],
             use_bias=use_bias[1],
+            **kwargs, # config arguments
         )
         self.point_conv = QConvLayer(
             mid_channels,
@@ -899,6 +905,7 @@ class QMBConv(nn.Module):
             norm=norm[2],
             act_func=act_func[2],
             use_bias=use_bias[2],
+            **kwargs, # config arguments
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -921,6 +928,7 @@ class QFusedMBConv(nn.Module):
         use_bias=False,
         norm=("bn2d", "bn2d"),
         act_func=("relu6", None),
+        **kwargs, # config arguments
     ):
         super().__init__()
         use_bias = val2tuple(use_bias, 2)
@@ -938,6 +946,7 @@ class QFusedMBConv(nn.Module):
             use_bias=use_bias[0],
             norm=norm[0],
             act_func=act_func[0],
+            **kwargs, # config arguments
         )
         self.point_conv = QConvLayer(
             mid_channels,
@@ -946,6 +955,7 @@ class QFusedMBConv(nn.Module):
             use_bias=use_bias[1],
             norm=norm[1],
             act_func=act_func[1],
+            **kwargs, # config arguments
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -966,6 +976,7 @@ class QResBlock(nn.Module):
         use_bias=False,
         norm=("bn2d", "bn2d"),
         act_func=("relu6", None),
+        **kwargs, # config arguments
     ):
         super().__init__()
         use_bias = val2tuple(use_bias, 2)
@@ -982,6 +993,7 @@ class QResBlock(nn.Module):
             use_bias=use_bias[0],
             norm=norm[0],
             act_func=act_func[0],
+            **kwargs, # config arguments
         )
         self.conv2 = QConvLayer(
             mid_channels,
@@ -991,6 +1003,7 @@ class QResBlock(nn.Module):
             use_bias=use_bias[1],
             norm=norm[1],
             act_func=act_func[1],
+            **kwargs, # config arguments
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
