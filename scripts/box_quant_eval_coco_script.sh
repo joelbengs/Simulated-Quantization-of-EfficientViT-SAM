@@ -19,8 +19,8 @@ export OMP_NUM_THREADS=$((nb_cpu_threads / nproc_per_node))
 # models=("l0_quant" "l1_quant" "l2_quant" "xl0_quant" "xl1_quant")
 models=("l0_quant")
 prompt_type=box
-observer_method_W=("minmax" "ema" "omse" "percentile")
-calib_iter=1000
+observer_method_W=("minmax") #"ema" "omse" "percentile"
+calib_iter=100
 
 echo "Starting $prompt_type --quantize evaluation of models: ${models[*]}"
 
@@ -41,7 +41,8 @@ do
     --prompt_type $prompt_type \
     --quantize_W \
     --calib_iter $calib_iter \
-    --observer_method_W $omw
+    --observer_method_W $omw \
+    --export_dataframe
     # --quantize_method_W $qmw \
     # --quantize_A \
     # --quantize_N \

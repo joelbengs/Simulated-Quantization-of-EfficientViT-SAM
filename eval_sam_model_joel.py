@@ -131,6 +131,7 @@ def run_box(efficientvit_sam, dataloader, local_rank):
 
     output = []
     for i, data in enumerate(tqdm(dataloader, disable=local_rank != 0)):        # for each batch of images
+        if i == 100: break
         data = data[0]                                                          # fetch the images?
         sam_image = np.array(Image.open(data["image_path"]).convert("RGB"))     # convert ot RGB image
         predictor.set_image(sam_image)                                          # send image to predictor
@@ -281,7 +282,7 @@ def evaluate_to_dataframe(dataframe, results, prompt_type, dataset, annotation_j
     if prompt_type == "point" or prompt_type == "box":
         metrics = get_iou_metric(results)
         for key, val in metrics.items():
-            dataframe.loc[len(dataframe), key] = val
+            dataframe.at[dataframe.index[-1], key] = val
         return dataframe
         
     elif prompt_type == "box_from_detector":
@@ -314,8 +315,10 @@ def create_dataframe(prompt_type, columns) -> pd.DataFrame:
     return df
 
 def metadata_to_dataframe(dataframe, args, columns) -> pd.DataFrame:
+    row_data = {}
     for column in columns:
-        dataframe.loc[len(dataframe), column] = getattr(args, column)
+        row_data[column] = getattr(args, column)
+    dataframe = dataframe.append(row_data, ignore_index=True)
     return dataframe
 
 def save_dataframe_to_file(dataframe):
@@ -382,6 +385,8 @@ if __name__ == "__main__":
         "calib_iter",
     ]
 
+    print(pd.__version__)
+    
     # TODO: implement different calibration types
     # TODO: Implement for all three val types
     # TODO: Start building different backbones for quant of different parts
@@ -456,10 +461,11 @@ if __name__ == "__main__":
     # evaluation - only done my the master process, not other parallell processes
     if local_rank == 0:
         if args.export_dataframe:
-            df = create_dataframe(args.prompt_type, columns)
+            df = create_dataframe(args.prompt_type, columns.copy())
             df = metadata_to_dataframe(df, args, columns)
             df = evaluate_to_dataframe(df, results, args.prompt_type, args.dataset, args.annotation_json_file, args=args)
-            print(df.head()) 
+            print(df.head())
+            print(df.tail())
             #save_dataframe_to_file(df)
         else:
             evaluate(results, args.prompt_type, args.dataset, args.annotation_json_file)
