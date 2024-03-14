@@ -8,6 +8,7 @@ import json
 import os
 
 import numpy as np
+import pandas as pd
 import torch
 from lvis import LVIS
 from PIL import Image
@@ -275,6 +276,21 @@ def evaluate(results, prompt_type, dataset, annotation_json_file=None):
     else:
         raise NotImplementedError()
 
+def evaluate_dataframe(results, prompt_type, dataset, annotation_json_file=None, args=None):
+    if prompt_type == "point" or prompt_type == "box":
+        print(", ".join([f"{key}={val:.3f}" for key, val in get_iou_metric(results).items()]))
+        
+    elif prompt_type == "box_from_detector":
+        iou_type = "segm"
+        if dataset == "coco":
+            coco_api = COCO(annotation_json_file)
+            evaluate_predictions_on_coco(coco_gt=coco_api, coco_results=results, iou_type=iou_type)
+        elif dataset == "lvis":
+            lvis_api = LVIS(annotation_json_file)
+            evaluate_predictions_on_lvis(lvis_gt=lvis_api, lvis_results=results, iou_type=iou_type)
+    else:
+        raise NotImplementedError()
+
 def quantize(efficientvit_sam):
     efficientvit_sam.toggle_quant_on()                             # just sets module.quant = true (or = 'int'). Doesn't alter any weights!
 
@@ -291,17 +307,31 @@ if __name__ == "__main__":
     parser.add_argument("--annotation_json_file", type=str)
     parser.add_argument("--source_json_file", type=str, default=None)
     parser.add_argument("--num_workers", type=int, default=4)
-    parser.add_argument("--quantize", action="store_true", help="Turn on quantization and calibration")
-    parser.add_argument("--calib_iter", type=int, default=100)
-    parser.add_argument("--quant-method-W", default="minmax", choices=["minmax", "ema", "omse", "percentile"])
-    parser.add_argument("--quant-method-A", default="minmax", choices=["minmax", "ema", "omse", "percentile"]) #TODO - implement this
+
     parser.add_argument('--single_gpu', action='store_true', help="Force the use of a single gpu, might help in troubleshooting quantization")
+    parser.add_argument('--supress_print', action="store_true", help="supresses debugging printouts")
+    parser.add_argument('--export_dataframe', action="store_true")
+
+    parser.add_argument("--quantize_W", action="store_true", help="Turn on quantization and calibration for weights")
+    parser.add_argument("--quantize_A", action="store_true", help="Turn on quantization and calibration for activations")
+    parser.add_argument("--quantize_N", action="store_true", help="Turn on quantization and calibration for activations")
+
+    parser.add_argument("--observer_method_W", default="minmax", choices=["minmax", "ema", "omse", "percentile"]) #TODO - implement this
+    parser.add_argument("--observer_method_A", default="minmax", choices=["minmax", "ema", "omse", "percentile"]) #TODO - implement this
+    parser.add_argument("--observer_method_N", default="minmax", choices=["minmax", "ema", "omse", "percentile"]) #TODO - implement this
+
+    parser.add_argument("--quantize_method_W", default="uniform", choices=["uniform", "log2"]) #TODO - implement this
+    parser.add_argument("--quantize_method_A", default="uniform", choices=["uniform", "log2"]) #TODO - implement this
+    parser.add_argument("--quantize_method_N", default="uniform", choices=["uniform", "log2"]) #TODO - implement this
+
+    parser.add_argument("--calib_iter", type=int, default=100)
+
 
     args = parser.parse_args()
-    
+    for arg in vars(args):
+        print(arg)
     # TODO: implement different calibration types
     # TODO: Implement for all three val types
-    # TODO: Get coco traindata for calibration
     # TODO: Start building different backbones for quant of different parts
     # TODO: Quantize norms and activations, i.e. make the config work.
 
@@ -309,11 +339,12 @@ if __name__ == "__main__":
 
     if args.single_gpu:
         local_rank = 0
-        print("Using single GPU")
+        if local_rank == 0 and not args.supress_print: # only master process prints
+            print("Using single GPU")
     else:
         local_rank = int(os.environ["LOCAL_RANK"])
         torch.distributed.init_process_group(backend="nccl") # initializing the distributed environment 
-        if local_rank == 0: # only master process prints
+        if local_rank == 0 and not args.supress_print:
             print(f"Using {torch.distributed.get_world_size()} GPUs")
     torch.cuda.set_device(local_rank)
     
@@ -331,37 +362,37 @@ if __name__ == "__main__":
 
     # calibration dataset
     if args.quantize:
-        print("Loading minitrain dataset")
         calib_dataset = eval_dataset(
-            args.dataset, args.image_root_calibration. args.prompt_type, args.__annotation_json_file, args.source_json_file
+            args.dataset, args.image_root_calibration, args.prompt_type, args.annotation_json_file, args.source_json_file
         )
         calib_sampler = DistributedSampler(calib_dataset, shuffle=False)
         calib_dataloader = DataLoader(
             calib_dataset, batch_size=1, sampler=sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn
         )
 
-    #calib_dataloader = dataloader # Using validation data now - must change to training data!
-
     # inference + calibration + quantization
     if args.prompt_type == "point":
-        if args.quantize:
-            print("Calibrating point...")
+        if args.quantize_W:
+            if local_rank == 0 and not args.supress_print:
+                print("Calibrating point...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
             quantize(efficientvit_sam)
 
         results = run_point(efficientvit_sam, dataloader, args.num_click, local_rank)
 
     elif args.prompt_type == "box":
-        if args.quantize:
-            print("Calibrating box...")
+        if args.quantize_W:
+            if local_rank == 0 and not args.supress_print:
+                print("Calibrating box...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
             quantize(efficientvit_sam)
 
         results = run_box(efficientvit_sam, dataloader, local_rank)
 
     elif args.prompt_type == "box_from_detector":
-        if args.quantize:
-            print("Calibrating box_from_detector...")
+        if args.quantize_W:
+            if local_rank == 0 and not args.supress_print:
+                print("Calibrating box_from_detector...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
             quantize(efficientvit_sam)
 
@@ -372,4 +403,7 @@ if __name__ == "__main__":
 
     # evaluation - only done my the master process, not other parallell processes
     if local_rank == 0:
-        evaluate(results, args.prompt_type, args.dataset, args.annotation_json_file)
+        if args.export_dataframe:
+            evaluate_dataframe(results, args.prompt_type, args.dataset, args.annotation_json_file, args=args)
+        else:
+            evaluate(results, args.prompt_type, args.dataset, args.annotation_json_file)

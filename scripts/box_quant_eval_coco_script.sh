@@ -19,25 +19,39 @@ export OMP_NUM_THREADS=$((nb_cpu_threads / nproc_per_node))
 # models=("l0_quant" "l1_quant" "l2_quant" "xl0_quant" "xl1_quant")
 models=("l0_quant")
 prompt_type=box
+observer_method_W=("minmax" "ema" "omse" "percentile")
+calib_iter=1000
 
-echo "Starting evaluation of models: ${models[*]} on prompt type: $prompt_type with --quantize"
+echo "Starting $prompt_type --quantize evaluation of models: ${models[*]}"
 
 for model in "${models[@]}"
 do
-  # Run the evaluation command for the current model - with --quantize flag on
-  torchrun --nproc_per_node=2 \
-  eval_sam_model_joel.py \
-  --dataset coco \
-  --image_root coco/val2017 \
-  --annotation_json_file coco/annotations/instances_val2017.json \
-  --model $model \
-  --prompt_type $prompt_type \
-  --quantize \
-  --image_root_calibration coco/minitrain2017
-
+  for omw in "${observer_method_W[@]}"
+  do
+    echo "Model $model, --quantize, minitrain2017, calib_iter=$calib_iter, --quantize, $omw"
+    # Run the evaluation command for the current model - with --quantize flag on
+    torchrun --nproc_per_node=2 \
+    eval_sam_model_joel.py \
+    --dataset coco \
+    --image_root coco/val2017 \
+    --image_root_calibration coco/minitrain2017 \
+    --annotation_json_file coco/annotations/instances_val2017.json \
+    --supress_print \
+    --model $model \
+    --prompt_type $prompt_type \
+    --quantize_W \
+    --calib_iter $calib_iter \
+    --observer-method_W $omw
+    # --quantize_method_W $qmw \
+    # --quantize_A \
+    # --quantize_N \
+    # --quantize_method_A $qma \
+    # --quantize_method_N $qmn \
+    # --observer-method_A $oma \
+    # --observer-method_N $omn \
+  done
 done
 
-echo "Finished evaluation of models: ${models[*]} on prompt type: $prompt_type with --quantize"
+echo "Finished $prompt_type --quanitze evaluation of models: ${models[*]}"
 # make it executable with the command chmod +x scriptname.sh
 # run it with ./scriptname.sh
-# 

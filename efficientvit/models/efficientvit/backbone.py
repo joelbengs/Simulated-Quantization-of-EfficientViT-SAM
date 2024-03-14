@@ -536,8 +536,6 @@ class EfficientViTBackboneQuant(nn.Module):
             self.stages.append(OpSequential(stage)) # append the structure to the model
             self.width_list.append(in_channels)     # log the dimension
         self.stages = nn.ModuleList(self.stages)    # Convert all stags to PyTorch ModuleList, creating a PyTorch model
-        print("One EfficientViTBackboneQuant has been built")
-
 
 
     # Helper method that builds DSConv for the input stem and MBConv for the other stages
@@ -668,7 +666,6 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                 calibration_mode=config.CALIBRATION_MODE,
                 observer_str=config.OBSERVER_STR,
                 quantizer_str=config.QUANTIZER_STR,
-                test_str=config.TEST_STR,
             )
         ]
 
@@ -688,7 +685,6 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                 calibration_mode=config.CALIBRATION_MODE,
                 observer_str=config.OBSERVER_STR,
                 quantizer_str=config.QUANTIZER_STR,
-                test_str=config.TEST_STR_RESBLOCK,
             )
             stage0.append(ResidualBlock(block, IdentityLayer())) # residual connection for each block
         # save the channel depth at output of the stem
@@ -750,7 +746,6 @@ class EfficientViTLargeBackboneQuant(nn.Module):
             self.stages.append(OpSequential(stage))
             self.width_list.append(in_channels)
         self.stages = nn.ModuleList(self.stages)
-        print("One Large Quantized backbone built")
 
     #################################################################################
     #                               Local block builder                             #
