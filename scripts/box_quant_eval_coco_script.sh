@@ -28,7 +28,7 @@ for model in "${models[@]}"
 do
   for omw in "${observer_method_W[@]}"
   do
-    echo "Model $model, --quantize, minitrain2017, calib_iter=$calib_iter, --quantize, $omw"
+    echo "Model $model, --quantize, minitrain2017, calib_iter=$calib_iter, --quantize, observer: $omw"
     # Run the evaluation command for the current model - with --quantize flag on
     torchrun --nproc_per_node=2 \
     eval_sam_model_joel.py \
@@ -41,7 +41,7 @@ do
     --prompt_type $prompt_type \
     --quantize_W \
     --calib_iter $calib_iter \
-    --observer-method_W $omw
+    --observer_method_W $omw
     # --quantize_method_W $qmw \
     # --quantize_A \
     # --quantize_N \

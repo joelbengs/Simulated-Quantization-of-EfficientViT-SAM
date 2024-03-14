@@ -276,20 +276,51 @@ def evaluate(results, prompt_type, dataset, annotation_json_file=None):
     else:
         raise NotImplementedError()
 
-def evaluate_dataframe(results, prompt_type, dataset, annotation_json_file=None, args=None):
+def evaluate_to_dataframe(dataframe, results, prompt_type, dataset, annotation_json_file=None, args=None):
+    # append each new result to the dataframe, and return the dataframe
     if prompt_type == "point" or prompt_type == "box":
-        print(", ".join([f"{key}={val:.3f}" for key, val in get_iou_metric(results).items()]))
+        metrics = get_iou_metric(results)
+        for key, val in metrics.items():
+            dataframe.loc[len(dataframe), key] = val
+        return dataframe
         
     elif prompt_type == "box_from_detector":
         iou_type = "segm"
         if dataset == "coco":
-            coco_api = COCO(annotation_json_file)
-            evaluate_predictions_on_coco(coco_gt=coco_api, coco_results=results, iou_type=iou_type)
+           raise NotImplementedError()
         elif dataset == "lvis":
-            lvis_api = LVIS(annotation_json_file)
-            evaluate_predictions_on_lvis(lvis_gt=lvis_api, lvis_results=results, iou_type=iou_type)
+            raise NotImplementedError()
     else:
         raise NotImplementedError()
+
+def create_dataframe(prompt_type, columns) -> pd.DataFrame:
+    # TODO: Check if dataframe exists
+    if prompt_type == 'box':
+            columns.extend([
+            "all",
+            "large",
+            "medium",
+            "small", 
+            ])
+    elif prompt_type == "point":
+        raise NotImplementedError()
+    elif prompt_type == "box_from_detector":
+        raise NotImplementedError()
+    else:
+        raise NotImplementedError()
+    
+    # Create DataFrame from column names
+    df = pd.DataFrame(columns=columns)
+    return df
+
+def metadata_to_dataframe(dataframe, args, columns) -> pd.DataFrame:
+    for column in columns:
+        dataframe.loc[len(dataframe), column] = getattr(args, column)
+    return dataframe
+
+def save_dataframe_to_file(dataframe):
+    # TODO
+    print("Save not implemented yet")
 
 def quantize(efficientvit_sam):
     efficientvit_sam.toggle_quant_on()                             # just sets module.quant = true (or = 'int'). Doesn't alter any weights!
@@ -312,9 +343,10 @@ if __name__ == "__main__":
     parser.add_argument('--supress_print', action="store_true", help="supresses debugging printouts")
     parser.add_argument('--export_dataframe', action="store_true")
 
+    parser.add_argument("--quantize", action="store_true", help="Turn on quantization and calibration for weights, activations, or norms")
     parser.add_argument("--quantize_W", action="store_true", help="Turn on quantization and calibration for weights")
     parser.add_argument("--quantize_A", action="store_true", help="Turn on quantization and calibration for activations")
-    parser.add_argument("--quantize_N", action="store_true", help="Turn on quantization and calibration for activations")
+    parser.add_argument("--quantize_N", action="store_true", help="Turn on quantization and calibration for norms")
 
     parser.add_argument("--observer_method_W", default="minmax", choices=["minmax", "ema", "omse", "percentile"]) #TODO - implement this
     parser.add_argument("--observer_method_A", default="minmax", choices=["minmax", "ema", "omse", "percentile"]) #TODO - implement this
@@ -326,16 +358,36 @@ if __name__ == "__main__":
 
     parser.add_argument("--calib_iter", type=int, default=100)
 
-
     args = parser.parse_args()
-    for arg in vars(args):
-        print(arg)
+    # Set args.quantize to True if any of the other quantize arguments are True
+    args.quantize = args.quantize_W or args.quantize_A or args.quantize_N
+
+    # colums for dataframes when running scripts
+    columns = [
+        "model",
+        "prompt_type",
+        "quantize_W",
+        "quantize_A",
+        "quantize_N",
+        "observer_method_W",
+        "observer_method_A",
+        "observer_method_N",
+        "quantize_method_W",
+        "quantize_method_A",
+        "quantize_method_N",
+        "num_click",
+        "dataset",
+        "image_root",
+        "image_root_calibration",
+        "calib_iter",
+    ]
+
     # TODO: implement different calibration types
     # TODO: Implement for all three val types
     # TODO: Start building different backbones for quant of different parts
     # TODO: Quantize norms and activations, i.e. make the config work.
 
-    config = Config(args.quant_method_W, args.quant_method_A) # quantization configuration
+    config = Config(args.observer_method_W) # quantization configuration
 
     if args.single_gpu:
         local_rank = 0
@@ -404,6 +456,10 @@ if __name__ == "__main__":
     # evaluation - only done my the master process, not other parallell processes
     if local_rank == 0:
         if args.export_dataframe:
-            evaluate_dataframe(results, args.prompt_type, args.dataset, args.annotation_json_file, args=args)
+            df = create_dataframe(args.prompt_type, columns)
+            df = metadata_to_dataframe(df, args, columns)
+            df = evaluate_to_dataframe(df, results, args.prompt_type, args.dataset, args.annotation_json_file, args=args)
+            print(df.head()) 
+            #save_dataframe_to_file(df)
         else:
             evaluate(results, args.prompt_type, args.dataset, args.annotation_json_file)

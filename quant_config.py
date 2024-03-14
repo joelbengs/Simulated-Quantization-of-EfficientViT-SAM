@@ -2,7 +2,7 @@ from efficientvit.models.ptq import BIT_TYPE_DICT
 
 class Config:
 
-    def __init__(self, quant_method_W='minmax', quant_method_A='minmax'):
+    def __init__(self, observer_method_W='minmax'):
         '''
         ptf stands for Power-of-Two Factor activation quantization for Integer Layernorm.
         lis stands for Log-Int-Softmax.
@@ -11,19 +11,17 @@ class Config:
         self.BIT_TYPE = BIT_TYPE_DICT['int8'] # default
         self.BIT_TYPE_W = BIT_TYPE_DICT['int8']
         self.BIT_TYPE_A = BIT_TYPE_DICT['uint8']
-        self.TEST_STR = "Config did get through to first QConvLayer!"
-        self.TEST_STR_RESBLOCK = "Config did get through to ResBlock via Kwargs!"
 
-        self.OBSERVER_STR = quant_method_W # default
-        self.OBSERVER_W = quant_method_W
-        self.OBSERVER_A = quant_method_A
+        self.OBSERVER_STR = observer_method_W # default
+        self.OBSERVER_W = observer_method_W
+        self.OBSERVER_A = observer_method_W #TODO fix
 
         self.QUANTIZER_STR='uniform' # default
         self.QUANTIZER_W = 'uniform'
         self.QUANTIZER_A = 'uniform'
         self.QUANTIZER_A_LN = 'uniform'
 
-        self.CALIBRATION_MODE='layer_wise'
+        self.CALIBRATION_MODE= 'layer_wise'
         self.CALIBRATION_MODE_W = 'channel_wise'
         self.CALIBRATION_MODE_A = 'layer_wise'
         self.CALIBRATION_MODE_S = 'layer_wise'
