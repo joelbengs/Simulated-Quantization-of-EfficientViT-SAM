@@ -305,7 +305,6 @@ if __name__ == "__main__":
     # TODO: Start building different backbones for quant of different parts
     # TODO: Quantize norms and activations, i.e. make the config work.
 
-
     config = Config(args.quant_method_W, args.quant_method_A) # quantization configuration
 
     if args.single_gpu:

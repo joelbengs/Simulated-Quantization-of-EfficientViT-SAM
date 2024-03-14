@@ -25,7 +25,16 @@ echo "Starting evaluation of models: ${models[*]} on prompt type: $prompt_type w
 for model in "${models[@]}"
 do
   # Run the evaluation command for the current model - with --quantize flag on
-  torchrun --nproc_per_node=2 eval_sam_model_joel.py --quantize --dataset coco --image_root coco/val2017 --annotation_json_file coco/annotations/instances_val2017.json --model $model --prompt_type $prompt_type
+  torchrun --nproc_per_node=2 \
+  eval_sam_model_joel.py \
+  --dataset coco \
+  --image_root coco/val2017 \
+  --annotation_json_file coco/annotations/instances_val2017.json \
+  --model $model \
+  --prompt_type $prompt_type \
+  --quantize \
+  --image_root_calibration coco/minitrain2017
+
 done
 
 echo "Finished evaluation of models: ${models[*]} on prompt type: $prompt_type with --quantize"

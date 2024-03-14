@@ -24,7 +24,14 @@ echo "Starting evaluation of models: ${models[*]} on prompt type: $prompt_type"
 for model in "${models[@]}"
 do
   # Run the evaluation command for the current model
-  torchrun --nproc_per_node=2 eval_sam_model.py --dataset coco --image_root coco/val2017 --annotation_json_file coco/annotations/instances_val2017.json --model $model --prompt_type $prompt_type --source_json_file coco/source_json_file/coco_vitdet.json
+  torchrun --nproc_per_node=2 \
+  eval_sam_model.py \
+  --dataset coco \
+  --image_root coco/val2017 \
+  --annotation_json_file coco/annotations/instances_val2017.json \
+  --model $model \
+  --prompt_type $prompt_type \
+  --source_json_file coco/source_json_file/coco_vitdet.json
 done
 
 echo "Finished evaluation of models: ${models[*]} on prompt type: $prompt_type"
