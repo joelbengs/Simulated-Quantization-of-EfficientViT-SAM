@@ -163,15 +163,12 @@ def calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank):
     efficientvit_sam = efficientvit_sam.cuda(local_rank).eval()                 # move model to correct GPU, and turn on eval mode
     predictor = EfficientViTSamPredictor(efficientvit_sam)                      # create predictor
   
-    efficientvit_sam.toggle_calibrate_on()                               # sets calibrate = true for all 'relevant' modules
+    efficientvit_sam.toggle_calibrate_on()                                      # sets calibrate = true for all 'relevant' modules
 
-    for i, data in enumerate(tqdm(dataloader, disable=local_rank != 0)):        # for each batch of images
-        if i == args.calib_iter:
-            print("breaking due to i = args.calib_iter: ", i, args.calib_iter)
-            break                                          # default is 10 batches
-        elif i == args.calib_iter - 1:
-            efficientvit_sam.toggle_last_calibrate_on()        # if last batch, set last_calibrate = true for all relevant modules
-            print("Did reach last_calibration, with i = ", i)
+    for i, data in enumerate(tqdm(calib_dataloader, disable=local_rank != 0)):  # for each batch of images
+        if i == len(calib_dataloader) - 1:                                       # The lenght of the dataloader is dynamicas data is split over GPUs. zero-based enumeration
+            print("Did reach last_calibration, with i = ", i, len(calib_dataloader))
+            efficientvit_sam.toggle_last_calibrate_on()                               # if second to last batch, set last_calibrate = true for all relevant modules
         data = data[0]                                                          # fetch the images?
         sam_image = np.array(Image.open(data["image_path"]).convert("RGB"))     # convert ot RGB image
         predictor.set_image(sam_image)                                          # send image to predictor
@@ -179,9 +176,9 @@ def calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank):
         for ann in anns:                                                        # for each annotation
             if ann["area"] < 1:                                                 # skip of too small bounding box
                 continue
-
             bbox = np.array(bbox_xywh_to_xyxy(ann["bbox"]))                     # find bounding box - (i.e. the prompt)
             _ = predict_mask_from_box(predictor, bbox)                          # predict mask from bounding box
+    
     efficientvit_sam.toggle_calibrate_off()                                 # sets calibrate = false for all reelvant modules
     efficientvit_sam.toggle_last_calibrate_off()                            # sets last_calibrate = false for all reelvant modules
 
@@ -372,8 +369,6 @@ if __name__ == "__main__":
     parser.add_argument("--quantize_method_A", default="uniform", choices=["uniform", "log2"]) #TODO - implement this
     parser.add_argument("--quantize_method_N", default="uniform", choices=["uniform", "log2"]) #TODO - implement this
 
-    parser.add_argument("--calib_iter", type=int, default=100)
-
     args = parser.parse_args()
     # Set args.quantize to True if any of the other quantize arguments are True
     args.quantize = args.quantize_W or args.quantize_A or args.quantize_N
@@ -395,11 +390,8 @@ if __name__ == "__main__":
         "dataset",
         "image_root",
         "image_root_calibration",
-        "calib_iter",
     ]
     
-    print(args.script_name)
-
     # TODO: implement different calibration types
     # TODO: Implement for all three val types
     # TODO: Start building different backbones for quant of different parts
@@ -429,8 +421,7 @@ if __name__ == "__main__":
     dataloader = DataLoader(
         dataset, batch_size=1, sampler=sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn
     )
-    num_images = len(dataloader.dataset)
-    print(f"The dataloader contains {num_images} images.")
+    print(f"The dataloader contains {len(dataloader.dataset)} images.")
 
     # calibration dataset
     if args.quantize:
@@ -439,14 +430,13 @@ if __name__ == "__main__":
         )
         calib_sampler = DistributedSampler(calib_dataset, shuffle=False)
         calib_dataloader = DataLoader(
-            calib_dataset, batch_size=1, sampler=sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn
+            calib_dataset, batch_size=1, sampler=calib_sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn
         )
-        num_images = len(dataloader.dataset)
-        print(f"The calibration dataloader contains {num_images} images.")
+        print(f"The calibration dataloader contains {len(calib_dataloader.dataset)} images.")
 
     # inference + calibration + quantization
     if args.prompt_type == "point":
-        if args.quantize_W:
+        if args.quantize:
             if local_rank == 0 and not args.supress_print:
                 print("Calibrating point...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
@@ -455,7 +445,7 @@ if __name__ == "__main__":
         results = run_point(efficientvit_sam, dataloader, args.num_click, local_rank)
 
     elif args.prompt_type == "box":
-        if args.quantize_W:
+        if args.quantize:
             if local_rank == 0 and not args.supress_print:
                 print("Calibrating box...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
@@ -464,7 +454,7 @@ if __name__ == "__main__":
         results = run_box(efficientvit_sam, dataloader, local_rank)
 
     elif args.prompt_type == "box_from_detector":
-        if args.quantize_W:
+        if args.quantize:
             if local_rank == 0 and not args.supress_print:
                 print("Calibrating box_from_detector...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
@@ -481,8 +471,7 @@ if __name__ == "__main__":
             df = create_dataframe(args.prompt_type, columns.copy(), args.script_name)
             df = metadata_to_dataframe(df, args, columns)
             df = evaluate_to_dataframe(df, results, args.prompt_type, args.dataset, args.annotation_json_file, args=args)
-            print("post head\n", df.head())
-            print("post tail\n", df.tail())
+            print("New row added to results: \n", df.tail(1))
             save_dataframe_to_file(df, args.script_name)
         else:
             evaluate(results, args.prompt_type, args.dataset, args.annotation_json_file)

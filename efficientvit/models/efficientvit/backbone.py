@@ -655,17 +655,12 @@ class EfficientViTLargeBackboneQuant(nn.Module):
 
         # First Convolution
         stage0 = [
-            QConvLayer(
+            ConvLayer(
                 in_channels=3,              # RGB input
                 out_channels=width_list[0], # width_list=[16, _, _, _, _] --> 16 kernels
                 stride=2,                   # Stride 2
                 norm=norm,
                 act_func=act_func,
-                # configs
-                bit_type=config.BIT_TYPE,
-                calibration_mode=config.CALIBRATION_MODE,
-                observer_str=config.OBSERVER_STR,
-                quantizer_str=config.QUANTIZER_STR,
             )
         ]
 
@@ -681,10 +676,10 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                 act_func=act_func,              # gelu, None
                 fewer_norm=fewer_norm_list[0],  # False
                 # configs
-                bit_type=config.BIT_TYPE,
-                calibration_mode=config.CALIBRATION_MODE,
-                observer_str=config.OBSERVER_STR,
-                quantizer_str=config.QUANTIZER_STR,
+                bit_type=config.BIT_TYPE_W,
+                calibration_mode=config.CALIBRATION_MODE_W,
+                observer_str=config.OBSERVER_W,
+                quantizer_str=config.QUANTIZER_W,
             )
             stage0.append(ResidualBlock(block, IdentityLayer())) # residual connection for each block
         # save the channel depth at output of the stem
@@ -712,7 +707,7 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                 expand_ratio=expand_list[stage_id] * 4, # The first block in each of these stages have 4x larger expansion
                 norm=norm,
                 act_func=act_func,
-                fewer_norm=fewer_norm_list[stage_id],   # only true in the alst two stages
+                fewer_norm=fewer_norm_list[stage_id],   # only true in the last two stages
             )
             stage.append(ResidualBlock(block, None)) #NO RESIDUAL CONNECTION for the first block
             in_channels = w
@@ -740,6 +735,11 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                         norm=norm,
                         act_func=act_func,
                         fewer_norm=fewer_norm_list[stage_id],      # only true in the last two stages
+                        # config
+                        bit_type=config.BIT_TYPE_W,
+                        calibration_mode=config.CALIBRATION_MODE_W,
+                        observer_str=config.OBSERVER_W,
+                        quantizer_str=config.QUANTIZER_W,
                     )
                     block = ResidualBlock(block, IdentityLayer()) # Residual connection for each other block
                     stage.append(block)

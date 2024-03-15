@@ -22,10 +22,11 @@ class Config:
         self.QUANTIZER_A_LN = 'uniform'
 
         self.CALIBRATION_MODE= 'layer_wise'
-        self.CALIBRATION_MODE_W = 'channel_wise'
+        self.CALIBRATION_MODE_W = 'layer_wise' # 'channel_wise'
         self.CALIBRATION_MODE_A = 'layer_wise'
         self.CALIBRATION_MODE_S = 'layer_wise'
 
+        # Remains from FQ-VIT
         ptf=False
         lis=False
         if lis:
