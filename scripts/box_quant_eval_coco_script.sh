@@ -16,11 +16,12 @@ export OMP_NUM_THREADS=$((nb_cpu_threads / nproc_per_node))
 # Note: Time to execute was the same if this was =1 or =32
 
 # Define the model family and prompt type
-# models=("l0_quant" "l1_quant" "l2_quant" "xl0_quant" "xl1_quant")
+#models=("l0_quant" "l1_quant" "l2_quant" "xl0_quant" "xl1_quant")
 models=("l0_quant")
 prompt_type=box
-observer_method_W=("minmax") #"ema" "omse" "percentile"
-calib_iter=100
+#observer_method_W=("minmax" "ema" "omse" "percentile")
+observer_method_W=("minmax")
+calib_iter=20
 
 echo "Starting $prompt_type --quantize evaluation of models: ${models[*]}"
 
@@ -42,7 +43,8 @@ do
     --quantize_W \
     --calib_iter $calib_iter \
     --observer_method_W $omw \
-    --export_dataframe
+    --export_dataframe \
+    --script_name $(basename $0 .sh) # removes the .sh extension and the directory scripts/
     # --quantize_method_W $qmw \
     # --quantize_A \
     # --quantize_N \
@@ -52,6 +54,9 @@ do
     # --observer-method_N $omn \
   done
 done
+
+# Execute view_results.py
+python view_pickle_file.py --pickle_file_path results --script_name $(basename $0 .sh)
 
 echo "Finished $prompt_type --quanitze evaluation of models: ${models[*]}"
 # make it executable with the command chmod +x scriptname.sh

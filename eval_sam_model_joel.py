@@ -131,7 +131,6 @@ def run_box(efficientvit_sam, dataloader, local_rank):
 
     output = []
     for i, data in enumerate(tqdm(dataloader, disable=local_rank != 0)):        # for each batch of images
-        if i == 100: break
         data = data[0]                                                          # fetch the images?
         sam_image = np.array(Image.open(data["image_path"]).convert("RGB"))     # convert ot RGB image
         predictor.set_image(sam_image)                                          # send image to predictor
@@ -168,9 +167,11 @@ def calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank):
 
     for i, data in enumerate(tqdm(dataloader, disable=local_rank != 0)):        # for each batch of images
         if i == args.calib_iter:
+            print("breaking due to i = args.calib_iter: ", i, args.calib_iter)
             break                                          # default is 10 batches
         elif i == args.calib_iter - 1:
             efficientvit_sam.toggle_last_calibrate_on()        # if last batch, set last_calibrate = true for all relevant modules
+            print("Did reach last_calibration, with i = ", i)
         data = data[0]                                                          # fetch the images?
         sam_image = np.array(Image.open(data["image_path"]).convert("RGB"))     # convert ot RGB image
         predictor.set_image(sam_image)                                          # send image to predictor
@@ -294,39 +295,50 @@ def evaluate_to_dataframe(dataframe, results, prompt_type, dataset, annotation_j
     else:
         raise NotImplementedError()
 
-def create_dataframe(prompt_type, columns) -> pd.DataFrame:
-    # TODO: Check if dataframe exists
-    if prompt_type == 'box':
-            columns.extend([
-            "all",
-            "large",
-            "medium",
-            "small", 
-            ])
-    elif prompt_type == "point":
-        raise NotImplementedError()
-    elif prompt_type == "box_from_detector":
-        raise NotImplementedError()
+def create_dataframe(prompt_type, columns, script_name: str) -> pd.DataFrame:
+    # TODO: Check if dataframe exists as pickle. Import if it does, instead of creating a new one.
+
+    # remove any leading directories and extensions from the script name
+    script_name = os.path.basename(script_name)
+    script_name = os.path.splitext(script_name)[0]
+    file_path = f'results/{script_name}.pkl'
+
+    if os.path.exists(file_path):
+        df = pd.read_pickle(file_path)
     else:
-        raise NotImplementedError()
-    
-    # Create DataFrame from column names
-    df = pd.DataFrame(columns=columns)
+        if prompt_type == 'box':
+                columns.extend([
+                "all",
+                "large",
+                "medium",
+                "small", 
+                ])
+        elif prompt_type == "point":
+            raise NotImplementedError()
+        elif prompt_type == "box_from_detector":
+            raise NotImplementedError()
+        else:
+            raise NotImplementedError()
+        df = pd.DataFrame(columns=columns)
     return df
 
-def metadata_to_dataframe(dataframe, args, columns) -> pd.DataFrame:
+def metadata_to_dataframe(abcd: pd.DataFrame, args, columns) -> pd.DataFrame:
+    print("Type of abcd: ", type(abcd))  # print the type of abcd
     row_data = {}
     for column in columns:
         row_data[column] = getattr(args, column)
-    dataframe = dataframe.append(row_data, ignore_index=True)
-    return dataframe
+    abcd = pd.concat([abcd, pd.DataFrame([row_data])], ignore_index=True)
+    return abcd
 
-def save_dataframe_to_file(dataframe):
-    # TODO
-    print("Save not implemented yet")
+def save_dataframe_to_file(dataframe: pd.DataFrame, script_name: str) -> None:
+    # Save the dataframe as a pickle file in the 'results' directory. Will overwrite.
+    # remove any leading directories and extensions from the script name
+    script_name = os.path.basename(script_name)
+    script_name = os.path.splitext(script_name)[0]
+    dataframe.to_pickle(path=f'results/{script_name}.pkl')
 
 def quantize(efficientvit_sam):
-    efficientvit_sam.toggle_quant_on()                             # just sets module.quant = true (or = 'int'). Doesn't alter any weights!
+    efficientvit_sam.toggle_quant_on() # just sets module.quant = true (or = 'int'). Doesn't alter any weights!
 
 
 if __name__ == "__main__":
@@ -345,6 +357,7 @@ if __name__ == "__main__":
     parser.add_argument('--single_gpu', action='store_true', help="Force the use of a single gpu, might help in troubleshooting quantization")
     parser.add_argument('--supress_print', action="store_true", help="supresses debugging printouts")
     parser.add_argument('--export_dataframe', action="store_true")
+    parser.add_argument('--script_name', type=str)
 
     parser.add_argument("--quantize", action="store_true", help="Turn on quantization and calibration for weights, activations, or norms")
     parser.add_argument("--quantize_W", action="store_true", help="Turn on quantization and calibration for weights")
@@ -384,9 +397,9 @@ if __name__ == "__main__":
         "image_root_calibration",
         "calib_iter",
     ]
-
-    print(pd.__version__)
     
+    print(args.script_name)
+
     # TODO: implement different calibration types
     # TODO: Implement for all three val types
     # TODO: Start building different backbones for quant of different parts
@@ -416,6 +429,8 @@ if __name__ == "__main__":
     dataloader = DataLoader(
         dataset, batch_size=1, sampler=sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn
     )
+    num_images = len(dataloader.dataset)
+    print(f"The dataloader contains {num_images} images.")
 
     # calibration dataset
     if args.quantize:
@@ -426,6 +441,8 @@ if __name__ == "__main__":
         calib_dataloader = DataLoader(
             calib_dataset, batch_size=1, sampler=sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn
         )
+        num_images = len(dataloader.dataset)
+        print(f"The calibration dataloader contains {num_images} images.")
 
     # inference + calibration + quantization
     if args.prompt_type == "point":
@@ -461,11 +478,11 @@ if __name__ == "__main__":
     # evaluation - only done my the master process, not other parallell processes
     if local_rank == 0:
         if args.export_dataframe:
-            df = create_dataframe(args.prompt_type, columns.copy())
+            df = create_dataframe(args.prompt_type, columns.copy(), args.script_name)
             df = metadata_to_dataframe(df, args, columns)
             df = evaluate_to_dataframe(df, results, args.prompt_type, args.dataset, args.annotation_json_file, args=args)
-            print(df.head())
-            print(df.tail())
-            #save_dataframe_to_file(df)
+            print("post head\n", df.head())
+            print("post tail\n", df.tail())
+            save_dataframe_to_file(df, args.script_name)
         else:
             evaluate(results, args.prompt_type, args.dataset, args.annotation_json_file)
