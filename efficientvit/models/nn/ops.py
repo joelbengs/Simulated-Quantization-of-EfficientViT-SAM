@@ -614,19 +614,21 @@ class QConvLayer(nn.Module):
             stride=1,
             dilation=1,
             groups=1,
-            use_bias=False,                    # is true in FQvit
+            use_bias=False,
             dropout=0,
             norm="bn2d",
             act_func="relu",
             # custom arguments
-            quant=False,                       # defined at model level
-            calibrate=False,                   # defined at model level
-            last_calibrate=False,              # defined at module level, altered at model level
+            quant=False,
+            calibrate=False,
+            last_calibrate=False,
             bit_type=BIT_TYPE_DICT['int8'],
             calibration_mode='layer_wise',
             observer_str='minmax',
             quantizer_str='uniform',
-            test_str=None,
+            stage_id='unknown',
+            block_name='independent',
+            block_is_bottleneck=False,
         ):
         
         super().__init__()
@@ -660,8 +662,6 @@ class QConvLayer(nn.Module):
                                        self.bit_type, self.calibration_mode) # in FQ-ViT, this is saved as self.observer for no reason
         self.quantizer = build_quantizer(self.quantizer_str, self.bit_type,
                                           observer_object, self.module_type)
-        if test_str:
-            print(test_str)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # calibrate

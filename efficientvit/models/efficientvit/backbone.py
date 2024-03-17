@@ -680,6 +680,9 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                 calibration_mode=config.CALIBRATION_MODE_W,
                 observer_str=config.OBSERVER_W,
                 quantizer_str=config.QUANTIZER_W,
+                stage_id="stage1",
+                block_name=block_list[0],        # res, passed to the QConvLayer
+                block_is_bottleneck=False,
             )
             stage0.append(ResidualBlock(block, IdentityLayer())) # residual connection for each block
         # save the channel depth at output of the stem
@@ -708,6 +711,14 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                 norm=norm,
                 act_func=act_func,
                 fewer_norm=fewer_norm_list[stage_id],   # only true in the last two stages
+                # config
+                bit_type=config.BIT_TYPE_W,
+                calibration_mode=config.CALIBRATION_MODE_W,
+                observer_str=config.OBSERVER_W,
+                quantizer_str=config.QUANTIZER_W,
+                stage_id="stage%d" % stage_id,
+                block_name="mb" if block_list[stage_id] not in ["mb", "fmb"] else block_list[stage_id],
+                block_is_bottleneck=True,
             )
             stage.append(ResidualBlock(block, None)) #NO RESIDUAL CONNECTION for the first block
             in_channels = w
@@ -740,6 +751,9 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                         calibration_mode=config.CALIBRATION_MODE_W,
                         observer_str=config.OBSERVER_W,
                         quantizer_str=config.QUANTIZER_W,
+                        stage_id="stage%d" % stage_id,
+                        block_name=block_list[stage_id],
+                        block_is_bottleneck=False,
                     )
                     block = ResidualBlock(block, IdentityLayer()) # Residual connection for each other block
                     stage.append(block)

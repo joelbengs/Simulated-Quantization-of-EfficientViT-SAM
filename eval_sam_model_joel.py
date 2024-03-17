@@ -336,6 +336,62 @@ def save_dataframe_to_file(dataframe: pd.DataFrame, script_name: str) -> None:
 
 def quantize(efficientvit_sam):
     efficientvit_sam.toggle_quant_on() # just sets module.quant = true (or = 'int'). Doesn't alter any weights!
+'''
+    # Cosntant: Weight quant = only in matmul.
+    Variables:
+    First input conv: always no.
+    Attention stages as a whole yes-no
+        Attention Relu sub-block yes or no
+        Attention scaling convs yes or no
+        Attention final MBConv (which is not a solo bottleneck) yes or no
+    Convolutional stages yes or no
+    Bottlenecks yes or no
+        Bottlenecks in attention-stages yes or no
+        Bottlenecks in conv-stages yes or no
+    SAM-Neck yes or no
+
+    Calibration method?
+    Layer-wise vs channel-wise?
+    Linear matmul in the attention layers yes or no
+'''
+
+'''
+Attempt 1: "Save attention-stages, Q the bulk of the buildup"
+- First Layer: No
+- Stage 1,2,3: Yes, Q the Convs
+- Bottlenecks: No, don't Q them ever, they could be important
+- Attention, stage 4 (+5): No, save them.
+- Neck: No
+- Linear matmul in the attention layers: no
+
+Attempt 2: "Q the conv-parts in the attention, leave the rest"
+- First Layer: No
+- Stage 1,2,3: No
+- Bottlenecks: No, don't Q them ever, they could be important
+- Attention, stage 4 (+5): Yes, Q the convolutions in both scaling, QKV, and projection
+- Neck: No
+- Linear matmul in the attention layers: no
+
+Attempt 3: "Q the conv in the attention, but not QKV, leave the rest"
+- First Layer: No
+- Stage 1,2,3: No
+- Bottlenecks: No, don't Q them ever, they could be important
+- Attention, stage 4 (+5): Yes, Q the convolutions in only scaling and projection
+- Neck: No
+- Linear matmul in the attention layers: no
+
+Attempt 4: "Q the conv in the attention, but not QKV, leave the rest"
+- First Layer: No
+- Stage 1,2,3: No
+- Bottlenecks: No, don't Q them ever, they could be important
+- Attention, stage 4 (+5): Yes, Q the convolutions in only scaling and projection
+- Neck: No
+- Linear matmul in the attention layers: no
+
+'''
+
+
+
 
 
 if __name__ == "__main__":
@@ -373,7 +429,7 @@ if __name__ == "__main__":
     # Set args.quantize to True if any of the other quantize arguments are True
     args.quantize = args.quantize_W or args.quantize_A or args.quantize_N
 
-    # colums for dataframes when running scripts
+    # colums for dataframes when running scripts. TODO: Perhaps these can be built from the arguments of the Config object instead? Not all but half.
     columns = [
         "model",
         "prompt_type",
@@ -392,13 +448,11 @@ if __name__ == "__main__":
         "image_root_calibration",
     ]
     
-    # TODO: implement different calibration types
     # TODO: Implement for all three val types
     # TODO: Start building different backbones for quant of different parts
     # TODO: Quantize norms and activations, i.e. make the config work.
 
-    config = Config(args.observer_method_W) # quantization configuration
-
+    config = Config(args) # quantization configuration
     if args.single_gpu:
         local_rank = 0
         if local_rank == 0 and not args.supress_print: # only master process prints

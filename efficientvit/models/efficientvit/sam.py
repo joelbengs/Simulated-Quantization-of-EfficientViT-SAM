@@ -262,32 +262,49 @@ class EfficientViTSam(nn.Module):
     
     def toggle_calibrate_on(self):
         for m in self.modules():
-            if type(m) in [QConvLayer, QLinearLayer]:
+            if type(m) in [QConvLayer]:
                 m.calibrate = True
 
     def toggle_calibrate_off(self):
         for m in self.modules():
-            if type(m) in [QConvLayer, QLinearLayer]:
+            if type(m) in [QConvLayer]:
                 m.calibrate = False
 
     def toggle_last_calibrate_on(self):
         for m in self.modules():
-            if type(m) in [QConvLayer, QLinearLayer]:
+            if type(m) in [QConvLayer]:
                 m.last_calibrate = True
 
     def toggle_last_calibrate_off(self):
       for m in self.modules():
-            if type(m) in [QConvLayer, QLinearLayer]:
+            if type(m) in [QConvLayer]:
                 m.last_calibrate = False
     
     def toggle_quant_on(self):
         for m in self.modules():
-            if type(m) in [QConvLayer, QLinearLayer]:
+            if type(m) in [QConvLayer]:
+                stage_id='no-stage',
+                block_name='independent',
+                block_is_bottleneck=False,
                 m.quant = True
+    
+    # quantizes only specificed parts. Can be specified by stages, by block names, by the intersection of both. Can be specified to save bottlenecks
+    def toggle_selective_quant_on(self, stages=None, block_names=None, save_bottlenecks=False):
+        for m in self.modules():
+            if type(m) in [QConvLayer]:
+                if stages is not None:
+                    if m.stage_id in stages: # ["stage5", "stage4", "stage3", "stage2", "stage1", "stage0", "unknown"]
+                        m.quant = True
+                if block_names is not None:
+                    if m.block_name in block_names: # 'independent' or ["res", "fmb", "fmb", "mb", "att"], overridden in XL-models to ["res", "fmb", "fmb", "fmb", "att@3", "att@3"]
+                        m.quant = True
+                if save_bottlenecks:
+                    if m.block_is_bottleneck:
+                        m.quant = True
 
     def toggle_quant_off(self):
         for m in self.modules():
-            if type(m) in [QConvLayer, QLinearLayer]:
+            if type(m) in [QConvLayer]:
                 m.quant = False
 
 class EfficientViTSamPredictor:

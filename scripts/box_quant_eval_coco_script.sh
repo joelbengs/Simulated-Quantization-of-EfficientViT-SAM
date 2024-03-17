@@ -16,11 +16,11 @@ export OMP_NUM_THREADS=$((nb_cpu_threads / nproc_per_node))
 # Note: Time to execute was the same if this was =1 or =32
 
 # Define the model family and prompt type
-models=("l0_quant" "l1_quant" "l2_quant" "xl0_quant" "xl1_quant")
-#models=("l0_quant")
+#models=("l0_quant" "l1_quant" "l2_quant" "xl0_quant" "xl1_quant")
+models=("l0_quant" "xl1_quant")
 prompt_type=box
-#observer_method_W=("minmax" "ema" "omse" "percentile")
-observer_method_W=("omse")
+observer_method_W=("minmax" "ema" "omse" "percentile")
+#observer_method_W=("omse")
 
 echo "Starting $prompt_type --quantize evaluation of models: ${models[*]}"
 
@@ -28,7 +28,7 @@ for model in "${models[@]}"
 do
   for omw in "${observer_method_W[@]}"
   do
-    echo "Model $model, --quantize, minitrain2017, --quantize, observer: $omw"
+    echo "Model $model, observer: $omw"
     # Run the evaluation command for the current model - with --quantize flag on
     torchrun --nproc_per_node=2 \
     eval_sam_model_joel.py \
