@@ -658,6 +658,9 @@ class QConvLayer(nn.Module):
         self.observer_str = observer_str
         self.quantizer_str = quantizer_str
         self.module_type = 'conv_weight'
+        self.stage_id = stage_id
+        self.block_name = block_name
+        self.block_is_bottleneck = block_is_bottleneck
         observer_object = build_observer(self.observer_str, self.module_type, 
                                        self.bit_type, self.calibration_mode) # in FQ-ViT, this is saved as self.observer for no reason
         self.quantizer = build_quantizer(self.quantizer_str, self.bit_type,

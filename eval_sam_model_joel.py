@@ -250,7 +250,6 @@ def run_box_from_detector(efficientvit_sam, dataloader, local_rank):
             rle["counts"] = rle["counts"].decode("utf-8")
             det["segmentation"] = rle
         output += detections
-
     world_size = int(os.environ["WORLD_SIZE"])
     merged_outs = sync_output(world_size, output)
 
@@ -334,61 +333,84 @@ def save_dataframe_to_file(dataframe: pd.DataFrame, script_name: str) -> None:
     script_name = os.path.splitext(script_name)[0]
     dataframe.to_pickle(path=f'results/{script_name}.pkl')
 
-def quantize(efficientvit_sam):
-    efficientvit_sam.toggle_quant_on() # just sets module.quant = true (or = 'int'). Doesn't alter any weights!
-'''
-    # Cosntant: Weight quant = only in matmul.
-    Variables:
-    First input conv: always no.
-    Attention stages as a whole yes-no
-        Attention Relu sub-block yes or no
-        Attention scaling convs yes or no
-        Attention final MBConv (which is not a solo bottleneck) yes or no
-    Convolutional stages yes or no
-    Bottlenecks yes or no
-        Bottlenecks in attention-stages yes or no
-        Bottlenecks in conv-stages yes or no
-    SAM-Neck yes or no
+def quantize(efficientvit_sam, backbone_version=0):
+    '''
+        # Cosntant: Weight quant = only in matmul.
+        Variables:
+        First input conv: always no.
+        Attention stages as a whole yes-no
+            Attention Relu sub-block yes or no
+            Attention scaling convs yes or no
+            Attention final MBConv (which is not a solo bottleneck) yes or no
+        Convolutional stages yes or no
+        Bottlenecks yes or no
+            Bottlenecks in attention-stages yes or no
+            Bottlenecks in conv-stages yes or no
+        SAM-Neck yes or no
 
-    Calibration method?
-    Layer-wise vs channel-wise?
-    Linear matmul in the attention layers yes or no
-'''
+        Calibration method?
+        Layer-wise vs channel-wise?
+        Linear matmul in the attention layers yes or no
+    '''
 
-'''
-Attempt 1: "Save attention-stages, Q the bulk of the buildup"
-- First Layer: No
-- Stage 1,2,3: Yes, Q the Convs
-- Bottlenecks: No, don't Q them ever, they could be important
-- Attention, stage 4 (+5): No, save them.
-- Neck: No
-- Linear matmul in the attention layers: no
+    if backbone_version == 0:
+        ''' Baseline backbone:
+        Quant was applied to all Conv-blocks exlusive of EfficientVi-Modules and the input layer. Neck was also spared.'''
+        efficientvit_sam.toggle_quant_on() # just sets module.quant = true (or = 'int'). Doesn't alter any weights!
+    elif backbone_version == 1:
+        ''' Attempt 1: "Save attention-stages, Q the bulk of the buildup"
+            - First Layer: No
+            - Stage 1,2,3: Yes, Q the Convs
+            - Bottlenecks: No, don't Q them ever, they could be important
+            - Attention, stage 4 (+5): No, save them.
+            - Neck: No
+            - Linear matmul in the attention layers: no'''
+        efficientvit_sam.toggle_selective_quant_on(
+            stages = ["stage0", "stage1", "stage2", "stage3"],
+            block_names = ["res", "fmb", "fmb", "mb"],
+            spare_bottlenecks = True,
+            )
+    elif backbone_version == 2:
+        print("Version not yet implemented")
+        ''' Attempt 2: "Q the conv-parts in the attention, leave the rest"
+        - First Layer: No
+        - Stage 1,2,3: No
+        - Bottlenecks: No, don't Q them ever, they could be important
+        - Attention, stage 4 (+5): Yes, Q the convolutions in both scaling, QKV, and projection, and output
+        - Neck: No
+        - Linear matmul in the attention layers: no'''
+        efficientvit_sam.toggle_selective_quant_on(
+            stages = ["stage4", "stage5"],
+            block_names = ["att", "att@3", "att@5"], # what will it really be for the subblocks?
+            spare_bottlenecks = True,
+            )
+    elif backbone_version == 3:
+        print("Version not yet implemented")
+        ''' Attempt 3: "Q the conv in the attention, but not QKV, leave the rest"
+            - First Layer: No
+            - Stage 1,2,3: No
+            - Bottlenecks: No, don't Q them ever, they could be important
+            - Attention, stage 4 (+5): Yes, Q the convolutions in only scaling and projection
+            - Neck: No
+            - Linear matmul in the attention layers: no'''
 
-Attempt 2: "Q the conv-parts in the attention, leave the rest"
-- First Layer: No
-- Stage 1,2,3: No
-- Bottlenecks: No, don't Q them ever, they could be important
-- Attention, stage 4 (+5): Yes, Q the convolutions in both scaling, QKV, and projection
-- Neck: No
-- Linear matmul in the attention layers: no
+        efficientvit_sam.toggle_selective_quant_on(
+            stages = ["stage4", "stage5"],
+            block_names = ["att", "att@3", "att@5"],
+            #(this one must be more specific! to target the convs inside the attention selectively)
+            spare_bottlenecks = True,
+        )
 
-Attempt 3: "Q the conv in the attention, but not QKV, leave the rest"
-- First Layer: No
-- Stage 1,2,3: No
-- Bottlenecks: No, don't Q them ever, they could be important
-- Attention, stage 4 (+5): Yes, Q the convolutions in only scaling and projection
-- Neck: No
-- Linear matmul in the attention layers: no
+    elif backbone_version == 4:
+        print("Version not yet implemented")
 
-Attempt 4: "Q the conv in the attention, but not QKV, leave the rest"
-- First Layer: No
-- Stage 1,2,3: No
-- Bottlenecks: No, don't Q them ever, they could be important
-- Attention, stage 4 (+5): Yes, Q the convolutions in only scaling and projection
-- Neck: No
-- Linear matmul in the attention layers: no
 
-'''
+
+
+
+
+
+
 
 
 
@@ -425,6 +447,9 @@ if __name__ == "__main__":
     parser.add_argument("--quantize_method_A", default="uniform", choices=["uniform", "log2"]) #TODO - implement this
     parser.add_argument("--quantize_method_N", default="uniform", choices=["uniform", "log2"]) #TODO - implement this
 
+    parser.add_argument("--backbone_version", default=0)
+
+
     args = parser.parse_args()
     # Set args.quantize to True if any of the other quantize arguments are True
     args.quantize = args.quantize_W or args.quantize_A or args.quantize_N
@@ -433,6 +458,7 @@ if __name__ == "__main__":
     columns = [
         "model",
         "prompt_type",
+        "backbone_version"
         "quantize_W",
         "quantize_A",
         "quantize_N",
@@ -494,7 +520,7 @@ if __name__ == "__main__":
             if local_rank == 0 and not args.supress_print:
                 print("Calibrating point...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
-            quantize(efficientvit_sam)
+            quantize(efficientvit_sam, backbone_version=args.backbone_version)
 
         results = run_point(efficientvit_sam, dataloader, args.num_click, local_rank)
 
@@ -503,7 +529,7 @@ if __name__ == "__main__":
             if local_rank == 0 and not args.supress_print:
                 print("Calibrating box...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
-            quantize(efficientvit_sam)
+            quantize(efficientvit_sam, backbone_version=args.backbone_version)
 
         results = run_box(efficientvit_sam, dataloader, local_rank)
 
@@ -512,7 +538,7 @@ if __name__ == "__main__":
             if local_rank == 0 and not args.supress_print:
                 print("Calibrating box_from_detector...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
-            quantize(efficientvit_sam)
+            quantize(efficientvit_sam, backbone_version=args.backbone_version)
 
         results = run_box_from_detector(efficientvit_sam, dataloader, local_rank)
 

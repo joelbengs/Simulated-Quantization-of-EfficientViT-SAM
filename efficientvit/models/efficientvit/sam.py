@@ -283,24 +283,34 @@ class EfficientViTSam(nn.Module):
     def toggle_quant_on(self):
         for m in self.modules():
             if type(m) in [QConvLayer]:
-                stage_id='no-stage',
-                block_name='independent',
-                block_is_bottleneck=False,
                 m.quant = True
     
     # quantizes only specificed parts. Can be specified by stages, by block names, by the intersection of both. Can be specified to save bottlenecks
-    def toggle_selective_quant_on(self, stages=None, block_names=None, save_bottlenecks=False):
+    def toggle_selective_quant_on(
+            self, 
+            stages=["unknown", "stage0", "stage1", "stage2", "stage4", "stage5"], 
+            block_names=['independent', "res", "fmb", "mb", "att", "att@3", "att@3"], # could be more scales, must build a general solution for any scale
+            spare_bottlenecks=False):
+        i = 0
         for m in self.modules():
             if type(m) in [QConvLayer]:
-                if stages is not None:
-                    if m.stage_id in stages: # ["stage5", "stage4", "stage3", "stage2", "stage1", "stage0", "unknown"]
+                if m.block_is_bottleneck is False:
+                    if m.stage_id in stages and m.block_name in block_names:
                         m.quant = True
-                if block_names is not None:
-                    if m.block_name in block_names: # 'independent' or ["res", "fmb", "fmb", "mb", "att"], overridden in XL-models to ["res", "fmb", "fmb", "fmb", "att@3", "att@3"]
-                        m.quant = True
-                if save_bottlenecks:
-                    if m.block_is_bottleneck:
-                        m.quant = True
+                        i = i + 1
+                    else:
+                        m.quant = False
+                elif m.block_is_bottleneck is True:
+                    if not spare_bottlenecks:
+                        if m.stage_id in stages and m.block_name in block_names:
+                            m.quant = True
+                            i = i + 1
+                        else:
+                            m.quant = False
+                else:
+                    print("A module with corrupt attributes found")
+        print(f"toggle_selective_quant_on has quantized {i} out of {len(self.modules())} modules.\nStages = {stages} and block_names = {block_names}.")
+        
 
     def toggle_quant_off(self):
         for m in self.modules():
