@@ -17,6 +17,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Read pickle file and convert it to pandas dataframe')
     parser.add_argument('--pickle_file_path', type=str, default='results', help='The directory of the pickle file')
     parser.add_argument('--script_name', type=str, help='The name of the script')
+    parser.add_argument('--view_all_columns', action='store_true')
 
     args = parser.parse_args()
 
@@ -39,7 +40,5 @@ if __name__ == "__main__":
     # Print the selected data
     print(selected_data)
 
-    #print(f"\nThe head of the dataframe {file_string} is: ")
-    #print(df.head())
-    #print(f"\nThe tail of the dataframe {file_string} is: ")
-    #print(df.tail())
+    if args.view_all_columns:
+         print(df.tail())

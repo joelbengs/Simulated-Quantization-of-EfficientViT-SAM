@@ -259,36 +259,97 @@ class EfficientViTSam(nn.Module):
     #                 Toggles functions for quantization                 #
     ######################################################################
 
-    
     def toggle_calibrate_on(self):
         for m in self.modules():
-            if type(m) in [QConvLayer, QLinearLayer]:
+            if type(m) in [QConvLayer]:
                 m.calibrate = True
 
     def toggle_calibrate_off(self):
         for m in self.modules():
-            if type(m) in [QConvLayer, QLinearLayer]:
+            if type(m) in [QConvLayer]:
                 m.calibrate = False
 
     def toggle_last_calibrate_on(self):
         for m in self.modules():
-            if type(m) in [QConvLayer, QLinearLayer]:
+            if type(m) in [QConvLayer]:
                 m.last_calibrate = True
 
     def toggle_last_calibrate_off(self):
       for m in self.modules():
-            if type(m) in [QConvLayer, QLinearLayer]:
+            if type(m) in [QConvLayer]:
                 m.last_calibrate = False
     
     def toggle_quant_on(self):
+        a = 0
+        b = 0
         for m in self.modules():
-            if type(m) in [QConvLayer, QLinearLayer]:
+            a = a + 1
+            if type(m) in [QConvLayer]:
+                b = b + 1
                 m.quant = True
+        print(f"toggle_quant_on has quantized all {b} QConvLayers out of {a} modules.")
+
+    
+    # quantizes only specificed parts. Can be specified by stages, by block names, by the intersection of both. Can be specified to save bottlenecks
+    def toggle_selective_quant_on(
+            self, 
+            stages=["unknown", "stage0", "stage1", "stage2", "stage4", "stage5"], 
+            block_names=['independent', "res", "fmb", "mb", "att", "att@3", "att@5"], # could be more scales, must build a general solution for any scale
+            spare_bottlenecks=False,
+            spare_attention_qkv=False,
+            spare_attention_scaling=False,
+            spare_attention_projection=False,
+            printout=False):
+        a = b = c = 0
+        for m in self.modules():
+            a = a + 1
+            if type(m) in [QConvLayer]:
+                b = b + 1
+                if m.block_is_bottleneck and spare_bottlenecks:
+                    if printout: print(f"spared bottleneck: {m.block_name} in {m.stage_id}", f"                module {a} of type {type(m)}")
+                    continue # skips to the next iteration
+
+                if m.block_name.startswith("att"):
+                    if m.conv_is_attention_qkv and spare_attention_qkv:
+                        if printout: print(f"spared QKV of {m.block_name} in {m.stage_id}", f"                module {a} of type {type(m)}")
+                        continue
+                    if m.conv_is_attention_scaling and spare_attention_scaling:
+                        if printout: print(f"spared scaling of {m.block_name} in {m.stage_id}", f"                module {a} of type {type(m)}")
+                        continue
+                    if m.conv_is_attention_projection and spare_attention_projection:
+                        if printout: print(f"spared projection of {m.block_name} in {m.stage_id}", f"                module {a} of type {type(m)}")
+                        continue
+
+                if m.stage_id in stages and m.block_name in block_names:
+                    m.quant = True
+                    c = c + 1
+                    if printout: print(f"quantized {m.block_name} in {m.stage_id}", f"                module {a} of type {type(m)}:")
+                else:
+                    m.quant = False
+                    if printout:
+                        print(f"avoided {m.block_name} in {m.stage_id}", f"                module {a} of type {type(m)}")
+            else:
+                if printout and False: # toggle to view all model for debugging
+                    print(f"No quantizaiton implemented for module {a} of type {type(m)}")
+        if printout:
+            print(f"SUMMARY: toggle_selective_quant_on has quantized {c} out of {a} modules. There were {b} QConvLayers.\nStages = {stages} and block_names = {block_names}.")
+            spared_parts = []
+            if spare_bottlenecks:
+                spared_parts.append('bottlenecks')
+            if spare_attention_qkv:
+                spared_parts.append('attention qkv')
+            if spare_attention_scaling:
+                spared_parts.append('attention scaling')
+            if spare_attention_projection:
+                spared_parts.append('attention projection')
+            print(f"Spared parts: {', '.join(spared_parts)}" if spared_parts else "Did not spare any parts.")
+
 
     def toggle_quant_off(self):
         for m in self.modules():
-            if type(m) in [QConvLayer, QLinearLayer]:
+            if type(m) in [QConvLayer]:
                 m.quant = False
+
 
 class EfficientViTSamPredictor:
     def __init__(self, sam_model: EfficientViTSam) -> None:

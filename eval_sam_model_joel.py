@@ -131,6 +131,8 @@ def run_box(efficientvit_sam, dataloader, local_rank):
 
     output = []
     for i, data in enumerate(tqdm(dataloader, disable=local_rank != 0)):        # for each batch of images
+        if i == 25:
+            break
         data = data[0]                                                          # fetch the images?
         sam_image = np.array(Image.open(data["image_path"]).convert("RGB"))     # convert ot RGB image
         predictor.set_image(sam_image)                                          # send image to predictor
@@ -166,9 +168,11 @@ def calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank):
     efficientvit_sam.toggle_calibrate_on()                                      # sets calibrate = true for all 'relevant' modules
 
     for i, data in enumerate(tqdm(calib_dataloader, disable=local_rank != 0)):  # for each batch of images
-        if i == len(calib_dataloader) - 1:                                       # The lenght of the dataloader is dynamicas data is split over GPUs. zero-based enumeration
+        if i == len(calib_dataloader) - 1 or i == args.limit_iterations - 1:                                       # The lenght of the dataloader is dynamicas data is split over GPUs. zero-based enumeration
             print("Did reach last_calibration, with i = ", i, len(calib_dataloader))
             efficientvit_sam.toggle_last_calibrate_on()                               # if second to last batch, set last_calibrate = true for all relevant modules
+        if i == args.limit_iterations:
+            break
         data = data[0]                                                          # fetch the images?
         sam_image = np.array(Image.open(data["image_path"]).convert("RGB"))     # convert ot RGB image
         predictor.set_image(sam_image)                                          # send image to predictor
@@ -250,7 +254,6 @@ def run_box_from_detector(efficientvit_sam, dataloader, local_rank):
             rle["counts"] = rle["counts"].decode("utf-8")
             det["segmentation"] = rle
         output += detections
-
     world_size = int(os.environ["WORLD_SIZE"])
     merged_outs = sync_output(world_size, output)
 
@@ -293,39 +296,42 @@ def evaluate_to_dataframe(dataframe, results, prompt_type, dataset, annotation_j
         raise NotImplementedError()
 
 def create_dataframe(prompt_type, columns, script_name: str) -> pd.DataFrame:
-    # TODO: Check if dataframe exists as pickle. Import if it does, instead of creating a new one.
-
+    # add columns
+    if prompt_type == 'box':
+            columns.extend([
+            "all",
+            "large",
+            "medium",
+            "small", 
+            ])
+    elif prompt_type == "point":
+        raise NotImplementedError()
+    elif prompt_type == "box_from_detector":
+        raise NotImplementedError()
+    else:
+        raise NotImplementedError()
+    
+    # fetch existing dataframe, else create new dataframe
     # remove any leading directories and extensions from the script name
     script_name = os.path.basename(script_name)
     script_name = os.path.splitext(script_name)[0]
     file_path = f'results/{script_name}.pkl'
-
+    
     if os.path.exists(file_path):
         df = pd.read_pickle(file_path)
+        for column in columns:
+            if column not in df.columns:
+                df[column] = np.nan
     else:
-        if prompt_type == 'box':
-                columns.extend([
-                "all",
-                "large",
-                "medium",
-                "small", 
-                ])
-        elif prompt_type == "point":
-            raise NotImplementedError()
-        elif prompt_type == "box_from_detector":
-            raise NotImplementedError()
-        else:
-            raise NotImplementedError()
         df = pd.DataFrame(columns=columns)
     return df
 
-def metadata_to_dataframe(abcd: pd.DataFrame, args, columns) -> pd.DataFrame:
-    print("Type of abcd: ", type(abcd))  # print the type of abcd
+def metadata_to_dataframe(dataframe: pd.DataFrame, args, columns) -> pd.DataFrame:
     row_data = {}
     for column in columns:
         row_data[column] = getattr(args, column)
-    abcd = pd.concat([abcd, pd.DataFrame([row_data])], ignore_index=True)
-    return abcd
+    dataframe = pd.concat([dataframe, pd.DataFrame([row_data])], ignore_index=True)
+    return dataframe
 
 def save_dataframe_to_file(dataframe: pd.DataFrame, script_name: str) -> None:
     # Save the dataframe as a pickle file in the 'results' directory. Will overwrite.
@@ -334,8 +340,157 @@ def save_dataframe_to_file(dataframe: pd.DataFrame, script_name: str) -> None:
     script_name = os.path.splitext(script_name)[0]
     dataframe.to_pickle(path=f'results/{script_name}.pkl')
 
-def quantize(efficientvit_sam):
-    efficientvit_sam.toggle_quant_on() # just sets module.quant = true (or = 'int'). Doesn't alter any weights!
+'''
+        # Cosntant: Weight quant = only in matmul.
+        Variables:
+        First input conv: always no.
+        Attention stages as a whole yes-no
+            Attention Relu sub-block yes or no
+            Attention scaling convs yes or no
+            Attention final MBConv (which is not a solo bottleneck) yes or no
+        Convolutional stages yes or no
+        Bottlenecks yes or no
+            Bottlenecks in attention-stages yes or no
+            Bottlenecks in conv-stages yes or no
+        SAM-Neck yes or no
+
+        Calibration method?
+        Layer-wise vs channel-wise?
+        Linear matmul in the attention layers yes or no
+    '''
+''' Attempt 1: "Save attention-stages, Q the bulk of the buildup"
+        - First Layer: No
+        - Stage 1,2,3: Yes, Q the Convs
+        - Bottlenecks: No, don't Q them ever, they could be important
+        - Attention, stage 4 (+5): No, save them.
+        - Neck: No
+        - Linear matmul in the attention layers: no'''
+''' Attempt 2: "Q the conv-parts in the attention, leave the rest"
+        - First Layer: No
+        - Stage 1,2,3: No
+        - Bottlenecks: No, don't Q them ever, they could be important
+        - Attention, stage 4 (+5): Yes, Q the convolutions in both scaling, QKV, and projection, and output
+        - Neck: No
+        - Linear matmul in the attention layers: no'''
+
+def quantize(efficientvit_sam, backbone_version='0', suppress_print=False):
+    printout=(local_rank==0 and suppress_print is False)
+
+    if backbone_version == '0':
+        ''' Baseline backbone:
+        Quant was applied to all Conv-blocks exlusive of EfficientVi-Modules and the input layer. Neck was also spared.'''
+        efficientvit_sam.toggle_quant_on() # just sets module.quant = true (or = 'int'). Doesn't alter any weights!
+    
+    elif backbone_version == '1a':
+        efficientvit_sam.toggle_selective_quant_on(
+            stages = ["stage0", "stage1", "stage2", "stage3"],
+            block_names = ["res", "fmb", "fmb", "mb"],
+            spare_bottlenecks=True,
+            printout=printout,
+            )
+    
+    elif backbone_version == '1b':
+        efficientvit_sam.toggle_selective_quant_on(
+            stages = ["stage0"],
+            block_names = ["res", "fmb", "fmb", "mb"],
+            spare_bottlenecks=True,
+            printout=printout,
+            )
+        
+    elif backbone_version == '1c':
+        efficientvit_sam.toggle_selective_quant_on(
+            stages = ["stage1"],
+            block_names = ["res", "fmb", "fmb", "mb"],
+            spare_bottlenecks=True,
+            printout=printout,
+            )
+    
+    elif backbone_version == '1d':
+        efficientvit_sam.toggle_selective_quant_on(
+            stages = ["stage2"],
+            block_names = ["res", "fmb", "fmb", "mb"],
+            spare_bottlenecks=True,
+            printout=printout,
+            )
+    
+    elif backbone_version == '1e':
+        efficientvit_sam.toggle_selective_quant_on(
+            stages = ["stage3"],
+            block_names = ["res", "fmb", "fmb", "mb"],
+            spare_bottlenecks=True,
+            printout=printout,
+            )
+
+    elif backbone_version == '2a':
+        efficientvit_sam.toggle_selective_quant_on(
+            stages = ["stage4", "stage5"],
+            block_names = ["att", "att@3", "att@5"],
+            spare_bottlenecks=True,
+            spare_attention_qkv=False,
+            spare_attention_scaling=False,
+            spare_attention_projection=False,
+            printout=printout,
+            )
+        
+    elif backbone_version == '2b':
+        efficientvit_sam.toggle_selective_quant_on(
+            stages = ["stage4", "stage5"],
+            block_names = ["att", "att@3", "att@5"],
+            spare_bottlenecks=True,
+            spare_attention_qkv=True,
+            spare_attention_scaling=False,
+            spare_attention_projection=False,
+            printout=printout,
+            )
+
+    elif backbone_version == '2c':
+        efficientvit_sam.toggle_selective_quant_on(
+            stages = ["stage4", "stage5"],
+            block_names = ["att", "att@3", "att@5"],
+            spare_bottlenecks=True,
+            spare_attention_qkv=False,
+            spare_attention_scaling=True,
+            spare_attention_projection=False,
+            printout=printout,
+            )
+
+    elif backbone_version == '2d':
+        efficientvit_sam.toggle_selective_quant_on(
+            stages = ["stage4", "stage5"],
+            block_names = ["att", "att@3", "att@5"],
+            spare_bottlenecks=True,
+            spare_attention_qkv=False,
+            spare_attention_scaling=False,
+            spare_attention_projection=True,
+            printout=printout,
+            )
+        
+    elif backbone_version == '2e':
+        efficientvit_sam.toggle_selective_quant_on(
+            stages = ["stage4", "stage5"],
+            block_names = ["att", "att@3", "att@5"],
+            spare_bottlenecks=True,
+            spare_attention_qkv=True,
+            spare_attention_scaling=True,
+            spare_attention_projection=True,
+            printout=printout,
+            )
+
+    else:
+        print("Version not yet implemented")
+        raise NotImplementedError("Backbone version not yet implemented")
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 if __name__ == "__main__":
@@ -352,9 +507,10 @@ if __name__ == "__main__":
     parser.add_argument("--num_workers", type=int, default=4)
 
     parser.add_argument('--single_gpu', action='store_true', help="Force the use of a single gpu, might help in troubleshooting quantization")
-    parser.add_argument('--supress_print', action="store_true", help="supresses debugging printouts")
+    parser.add_argument('--suppress_print', action="store_true", help="suppresses debugging printouts")
     parser.add_argument('--export_dataframe', action="store_true")
     parser.add_argument('--script_name', type=str)
+    parser.add_argument('--limit_iterations', type=int, default=-1)
 
     parser.add_argument("--quantize", action="store_true", help="Turn on quantization and calibration for weights, activations, or norms")
     parser.add_argument("--quantize_W", action="store_true", help="Turn on quantization and calibration for weights")
@@ -369,14 +525,22 @@ if __name__ == "__main__":
     parser.add_argument("--quantize_method_A", default="uniform", choices=["uniform", "log2"]) #TODO - implement this
     parser.add_argument("--quantize_method_N", default="uniform", choices=["uniform", "log2"]) #TODO - implement this
 
+    parser.add_argument("--backbone_version", type=str, default='0')
+
+
     args = parser.parse_args()
     # Set args.quantize to True if any of the other quantize arguments are True
     args.quantize = args.quantize_W or args.quantize_A or args.quantize_N
 
-    # colums for dataframes when running scripts
+    # TODO: Implement for all three val types
+    # TODO: Quantize norms and activations, i.e. make the config work.
+    
+    # colums for dataframes when running scripts.
+    # TODO: Perhaps these can be built from the arguments of the Config object instead? Not all but half.
     columns = [
         "model",
         "prompt_type",
+        "backbone_version",
         "quantize_W",
         "quantize_A",
         "quantize_N",
@@ -390,23 +554,18 @@ if __name__ == "__main__":
         "dataset",
         "image_root",
         "image_root_calibration",
+        "limit_iterations"
     ]
-    
-    # TODO: implement different calibration types
-    # TODO: Implement for all three val types
-    # TODO: Start building different backbones for quant of different parts
-    # TODO: Quantize norms and activations, i.e. make the config work.
 
-    config = Config(args.observer_method_W) # quantization configuration
-
+    config = Config(args) # quantization configuration
     if args.single_gpu:
         local_rank = 0
-        if local_rank == 0 and not args.supress_print: # only master process prints
+        if local_rank == 0 and not args.suppress_print: # only master process prints
             print("Using single GPU")
     else:
         local_rank = int(os.environ["LOCAL_RANK"])
         torch.distributed.init_process_group(backend="nccl") # initializing the distributed environment 
-        if local_rank == 0 and not args.supress_print:
+        if local_rank == 0 and not args.suppress_print:
             print(f"Using {torch.distributed.get_world_size()} GPUs")
     torch.cuda.set_device(local_rank)
     
@@ -421,7 +580,8 @@ if __name__ == "__main__":
     dataloader = DataLoader(
         dataset, batch_size=1, sampler=sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn
     )
-    print(f"The dataloader contains {len(dataloader.dataset)} images.")
+    if local_rank == 0 and not args.suppress_print:
+        print(f"The dataloader contains {len(dataloader.dataset)} images.")
 
     # calibration dataset
     if args.quantize:
@@ -432,33 +592,34 @@ if __name__ == "__main__":
         calib_dataloader = DataLoader(
             calib_dataset, batch_size=1, sampler=calib_sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn
         )
-        print(f"The calibration dataloader contains {len(calib_dataloader.dataset)} images.")
+        if local_rank == 0 and not args.suppress_print:
+            print(f"The calibration dataloader contains {len(calib_dataloader.dataset)} images.")
 
     # inference + calibration + quantization
     if args.prompt_type == "point":
         if args.quantize:
-            if local_rank == 0 and not args.supress_print:
+            if local_rank == 0 and not args.suppress_print:
                 print("Calibrating point...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
-            quantize(efficientvit_sam)
+            quantize(efficientvit_sam, args.backbone_version, args.suppress_print)
 
         results = run_point(efficientvit_sam, dataloader, args.num_click, local_rank)
 
     elif args.prompt_type == "box":
         if args.quantize:
-            if local_rank == 0 and not args.supress_print:
+            if local_rank == 0 and not args.suppress_print:
                 print("Calibrating box...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
-            quantize(efficientvit_sam)
+            quantize(efficientvit_sam, args.backbone_version, args.suppress_print)
 
         results = run_box(efficientvit_sam, dataloader, local_rank)
 
     elif args.prompt_type == "box_from_detector":
         if args.quantize:
-            if local_rank == 0 and not args.supress_print:
+            if local_rank == 0 and not args.suppress_print:
                 print("Calibrating box_from_detector...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
-            quantize(efficientvit_sam)
+            quantize(efficientvit_sam, args.backbone_version, args.suppress_print)
 
         results = run_box_from_detector(efficientvit_sam, dataloader, local_rank)
 
