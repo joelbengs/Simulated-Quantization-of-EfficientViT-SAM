@@ -166,9 +166,11 @@ def calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank):
     efficientvit_sam.toggle_calibrate_on()                                      # sets calibrate = true for all 'relevant' modules
 
     for i, data in enumerate(tqdm(calib_dataloader, disable=local_rank != 0)):  # for each batch of images
-        if i == len(calib_dataloader) - 1:                                       # The lenght of the dataloader is dynamicas data is split over GPUs. zero-based enumeration
+        if i == len(calib_dataloader) - 1 or i == 25:                                       # The lenght of the dataloader is dynamicas data is split over GPUs. zero-based enumeration
             print("Did reach last_calibration, with i = ", i, len(calib_dataloader))
             efficientvit_sam.toggle_last_calibrate_on()                               # if second to last batch, set last_calibrate = true for all relevant modules
+        if i == 26:
+            break
         data = data[0]                                                          # fetch the images?
         sam_image = np.array(Image.open(data["image_path"]).convert("RGB"))     # convert ot RGB image
         predictor.set_image(sam_image)                                          # send image to predictor
@@ -333,8 +335,7 @@ def save_dataframe_to_file(dataframe: pd.DataFrame, script_name: str) -> None:
     script_name = os.path.splitext(script_name)[0]
     dataframe.to_pickle(path=f'results/{script_name}.pkl')
 
-def quantize(efficientvit_sam, backbone_version=0):
-    '''
+'''
         # Cosntant: Weight quant = only in matmul.
         Variables:
         First input conv: always no.
@@ -352,11 +353,13 @@ def quantize(efficientvit_sam, backbone_version=0):
         Layer-wise vs channel-wise?
         Linear matmul in the attention layers yes or no
     '''
-
+def quantize(efficientvit_sam, backbone_version=0, suppress_print=False):
+    printout=(local_rank==0 and suppress_print is False)
     if backbone_version == 0:
         ''' Baseline backbone:
         Quant was applied to all Conv-blocks exlusive of EfficientVi-Modules and the input layer. Neck was also spared.'''
         efficientvit_sam.toggle_quant_on() # just sets module.quant = true (or = 'int'). Doesn't alter any weights!
+    
     elif backbone_version == 1:
         ''' Attempt 1: "Save attention-stages, Q the bulk of the buildup"
             - First Layer: No
@@ -369,7 +372,9 @@ def quantize(efficientvit_sam, backbone_version=0):
             stages = ["stage0", "stage1", "stage2", "stage3"],
             block_names = ["res", "fmb", "fmb", "mb"],
             spare_bottlenecks = True,
+            printout=printout,
             )
+
     elif backbone_version == 2:
         print("Version not yet implemented")
         ''' Attempt 2: "Q the conv-parts in the attention, leave the rest"
@@ -383,7 +388,9 @@ def quantize(efficientvit_sam, backbone_version=0):
             stages = ["stage4", "stage5"],
             block_names = ["att", "att@3", "att@5"], # what will it really be for the subblocks?
             spare_bottlenecks = True,
+            printout=printout,
             )
+
     elif backbone_version == 3:
         print("Version not yet implemented")
         ''' Attempt 3: "Q the conv in the attention, but not QKV, leave the rest"
@@ -399,6 +406,7 @@ def quantize(efficientvit_sam, backbone_version=0):
             block_names = ["att", "att@3", "att@5"],
             #(this one must be more specific! to target the convs inside the attention selectively)
             spare_bottlenecks = True,
+            printout=printout,
         )
 
     elif backbone_version == 4:
@@ -430,7 +438,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_workers", type=int, default=4)
 
     parser.add_argument('--single_gpu', action='store_true', help="Force the use of a single gpu, might help in troubleshooting quantization")
-    parser.add_argument('--supress_print', action="store_true", help="supresses debugging printouts")
+    parser.add_argument('--suppress_print', action="store_true", help="suppresses debugging printouts")
     parser.add_argument('--export_dataframe', action="store_true")
     parser.add_argument('--script_name', type=str)
 
@@ -447,7 +455,7 @@ if __name__ == "__main__":
     parser.add_argument("--quantize_method_A", default="uniform", choices=["uniform", "log2"]) #TODO - implement this
     parser.add_argument("--quantize_method_N", default="uniform", choices=["uniform", "log2"]) #TODO - implement this
 
-    parser.add_argument("--backbone_version", default=0)
+    parser.add_argument("--backbone_version", type=int, default=0)
 
 
     args = parser.parse_args()
@@ -481,12 +489,12 @@ if __name__ == "__main__":
     config = Config(args) # quantization configuration
     if args.single_gpu:
         local_rank = 0
-        if local_rank == 0 and not args.supress_print: # only master process prints
+        if local_rank == 0 and not args.suppress_print: # only master process prints
             print("Using single GPU")
     else:
         local_rank = int(os.environ["LOCAL_RANK"])
         torch.distributed.init_process_group(backend="nccl") # initializing the distributed environment 
-        if local_rank == 0 and not args.supress_print:
+        if local_rank == 0 and not args.suppress_print:
             print(f"Using {torch.distributed.get_world_size()} GPUs")
     torch.cuda.set_device(local_rank)
     
@@ -501,7 +509,8 @@ if __name__ == "__main__":
     dataloader = DataLoader(
         dataset, batch_size=1, sampler=sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn
     )
-    print(f"The dataloader contains {len(dataloader.dataset)} images.")
+    if local_rank == 0 and not args.suppress_print:
+        print(f"The dataloader contains {len(dataloader.dataset)} images.")
 
     # calibration dataset
     if args.quantize:
@@ -512,33 +521,34 @@ if __name__ == "__main__":
         calib_dataloader = DataLoader(
             calib_dataset, batch_size=1, sampler=calib_sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn
         )
-        print(f"The calibration dataloader contains {len(calib_dataloader.dataset)} images.")
+        if local_rank == 0 and not args.suppress_print:
+            print(f"The calibration dataloader contains {len(calib_dataloader.dataset)} images.")
 
     # inference + calibration + quantization
     if args.prompt_type == "point":
         if args.quantize:
-            if local_rank == 0 and not args.supress_print:
+            if local_rank == 0 and not args.suppress_print:
                 print("Calibrating point...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
-            quantize(efficientvit_sam, backbone_version=args.backbone_version)
+            quantize(efficientvit_sam, args.backbone_version, args.suppress_print)
 
         results = run_point(efficientvit_sam, dataloader, args.num_click, local_rank)
 
     elif args.prompt_type == "box":
         if args.quantize:
-            if local_rank == 0 and not args.supress_print:
+            if local_rank == 0 and not args.suppress_print:
                 print("Calibrating box...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
-            quantize(efficientvit_sam, backbone_version=args.backbone_version)
+            quantize(efficientvit_sam, args.backbone_version, args.suppress_print)
 
         results = run_box(efficientvit_sam, dataloader, local_rank)
 
     elif args.prompt_type == "box_from_detector":
         if args.quantize:
-            if local_rank == 0 and not args.supress_print:
+            if local_rank == 0 and not args.suppress_print:
                 print("Calibrating box_from_detector...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
-            quantize(efficientvit_sam, backbone_version=args.backbone_version)
+            quantize(efficientvit_sam, args.backbone_version, args.suppress_print)
 
         results = run_box_from_detector(efficientvit_sam, dataloader, local_rank)
 

@@ -629,6 +629,9 @@ class QConvLayer(nn.Module):
             stage_id='unknown',
             block_name='independent',
             block_is_bottleneck=False,
+            conv_is_attention_qkv=False,
+            conv_is_attention_scaling=False,
+            conv_is_attention_projection=False,
         ):
         
         super().__init__()
@@ -661,6 +664,10 @@ class QConvLayer(nn.Module):
         self.stage_id = stage_id
         self.block_name = block_name
         self.block_is_bottleneck = block_is_bottleneck
+        self.conv_is_attention_qkv = conv_is_attention_qkv
+        self.conv_is_attention_scaling = conv_is_attention_scaling
+        self.conv_is_attention_projection = conv_is_attention_projection
+
         observer_object = build_observer(self.observer_str, self.module_type, 
                                        self.bit_type, self.calibration_mode) # in FQ-ViT, this is saved as self.observer for no reason
         self.quantizer = build_quantizer(self.quantizer_str, self.bit_type,
@@ -730,13 +737,18 @@ class QLinearLayer(nn.Module):
         norm=None,
         act_func=None,
         # custom arguments
-        quant=False,                       # defined at model level
-        calibrate=False,                   # defined at model level
-        last_calibrate=False,              # defined at module level, altered at model level
-        bit_type=BIT_TYPE_DICT['int8'],    # defined at module level
-        calibration_mode='layer_wise',
-        observer_str='minmax',
-        quantizer_str='uniform',):
+            # custom arguments
+            quant=False,
+            calibrate=False,
+            last_calibrate=False,
+            bit_type=BIT_TYPE_DICT['int8'],
+            calibration_mode='layer_wise',
+            observer_str='minmax',
+            quantizer_str='uniform',
+            stage_id='unknown',
+            block_name='independent',
+            block_is_bottleneck=False,
+        ):
         super().__init__()
 
         self.dropout = nn.Dropout(dropout, inplace=False) if dropout > 0 else None
@@ -753,11 +765,13 @@ class QLinearLayer(nn.Module):
         self.observer_str = observer_str
         self.quantizer_str = quantizer_str
         self.module_type = 'linear_weight'
+        self.state_id=stage_id
+        self.block_name=block_name
+        self.block_is_bottleneck=block_is_bottleneck
         observer_object = build_observer(self.observer_str, self.module_type, 
                                        self.bit_type, self.calibration_mode) # in FQ-ViT, this is saved as self.observer for no reason
         self.quantizer = build_quantizer(self.quantizer_str, self.bit_type,
                                           observer_object, self.module_type)
-        #print("One QLinearLayer built")
 
     def _try_squeeze(self, x: torch.Tensor) -> torch.Tensor:
         if x.dim() > 2:
@@ -810,7 +824,9 @@ class QDSConv(nn.Module):
         stride=1,
         use_bias=False,
         norm=("bn2d", "bn2d"),
-        act_func=("relu6", None),):
+        act_func=("relu6", None),
+        **kwargs
+        ):
         super().__init__()
 
         use_bias = val2tuple(use_bias, 2)
@@ -826,7 +842,8 @@ class QDSConv(nn.Module):
             norm=norm[0],
             act_func=act_func[0],
             use_bias=use_bias[0],
-        )
+            **kwargs,
+            )
         self.point_conv = QConvLayer(
             in_channels,
             out_channels,
@@ -834,26 +851,10 @@ class QDSConv(nn.Module):
             norm=norm[1],
             act_func=act_func[1],
             use_bias=use_bias[1],
+            **kwargs,
         )
-         # Custom arguments
-        print("One QDSConv built, using two QConvLayers")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # calibrate
-        #if self.calibrate:
-         #   self.quantizer_depth.observer.update(self.depth_conv.weight)
-          #  if self.last_calibrate:
-           #     self.quantizer_point.update_quantization_params(x)
-        
-        # quantized forward pass
-        #if self.quant:
-         #   weights_dept_conv = self.quantizer_depth(self.depth_conv.weight)
-            #weights_point_conv = self.quantizer_point(self.point_conv.weight)
-          #  #x = # TODO: perform the self.dept_conv(x) operation but using quantized weights_dept_conv
-            #x = # TODO: perform the self.point_conv(x) operation but using quantized weights_point_conv
-           # x = F.conv2d(x, weights_dept_conv, stride=self.depth_conv.stride, padding=self.depth_conv.padding, groups=self.depth_conv.groups)
-            #x = F.conv2d(x, weights_point_conv, stride=self.point_conv.stride, padding=self.point_conv.padding)
-        
         x = self.depth_conv(x)
         x = self.point_conv(x)
         return x
@@ -967,7 +968,7 @@ class QFusedMBConv(nn.Module):
         x = self.point_conv(x)
         return x
 
-# Wraps QConvLayer twice. No other modifications.  Is only used in Large models!
+# Wraps QConvLayer twice. No other modifications. Is only used in SAM models
 class QResBlock(nn.Module):
     def __init__(
         self,
@@ -1033,6 +1034,7 @@ class QLiteMLA(nn.Module):
         kernel_func="relu",
         scales: tuple[int, ...] = (5,),
         eps=1.0e-15,
+        **kwargs,
     ):
         super().__init__()
         self.eps = eps
@@ -1045,13 +1047,15 @@ class QLiteMLA(nn.Module):
         act_func = val2tuple(act_func, 2)
 
         self.dim = dim
-        self.qkv = ConvLayer(
+        self.qkv = QConvLayer(
             in_channels,
             3 * total_dim,
             1,
             use_bias=use_bias[0], # False
             norm=norm[0],         # override to b2nd
             act_func=act_func[0], # override to Gelu
+            conv_is_attention_qkv=True,
+            **kwargs,
         )
         self.aggreg = nn.ModuleList(
             [
@@ -1071,13 +1075,15 @@ class QLiteMLA(nn.Module):
         )
         self.kernel_func = build_act(kernel_func, inplace=False)
 
-        self.proj = ConvLayer(
+        self.proj = QConvLayer(
             total_dim * (1 + len(scales)),
             out_channels,
             1,
             use_bias=use_bias[1],
             norm=norm[1],         # override to bn2d
             act_func=act_func[1], # override to gelu
+            conv_is_attention_projection=True,
+            **kwargs,
         )
 
     @autocast(enabled=False)
@@ -1143,6 +1149,7 @@ class QEfficientViTBlock(nn.Module):
         scales=(5,),
         norm="bn2d",
         act_func="hswish",
+        **kwargs,
     ):
         super().__init__()
         self.context_module = ResidualBlock(
@@ -1153,6 +1160,7 @@ class QEfficientViTBlock(nn.Module):
                 dim=dim,
                 norm=(None, norm),
                 scales=scales,
+                **kwargs,
             ),
             IdentityLayer(),
         )
@@ -1163,6 +1171,7 @@ class QEfficientViTBlock(nn.Module):
             use_bias=(True, True, False),
             norm=(None, None, norm),
             act_func=(act_func, act_func, None),
+            **kwargs,
         )
         self.local_module = ResidualBlock(local_module, IdentityLayer())
 

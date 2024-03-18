@@ -17,10 +17,11 @@ export OMP_NUM_THREADS=$((nb_cpu_threads / nproc_per_node))
 
 # Define the model family and prompt type
 #models=("l0_quant" "l1_quant" "l2_quant" "xl0_quant" "xl1_quant")
-models=("l0_quant" "xl1_quant")
+models=("l0_quant")
 prompt_type=box
-observer_method_W=("minmax" "ema" "omse" "percentile")
-#observer_method_W=("omse")
+#observer_method_W=("minmax" "ema" "omse" "percentile")
+observer_method_W=("omse")
+backbone_version=1
 
 echo "Starting $prompt_type --quantize evaluation of models: ${models[*]}"
 
@@ -28,7 +29,7 @@ for model in "${models[@]}"
 do
   for omw in "${observer_method_W[@]}"
   do
-    echo "Model $model, observer: $omw"
+    echo "Model $model, observer: $omw, backbone_version: $backbone_version"
     # Run the evaluation command for the current model - with --quantize flag on
     torchrun --nproc_per_node=2 \
     eval_sam_model_joel.py \
@@ -40,8 +41,9 @@ do
     --prompt_type $prompt_type \
     --quantize_W \
     --observer_method_W $omw \
-    --export_dataframe \
+    --backbone_version $backbone_version \
     --script_name $(basename $0 .sh) # removes the .sh extension and the directory scripts/
+    #--export_dataframe \
     # --quantize_method_W $qmw \
     # --quantize_A \
     # --quantize_N \
@@ -54,7 +56,7 @@ do
 done
 
 # Execute view_results.py
-python view_pickle_file.py --pickle_file_path results --script_name $(basename $0 .sh)
+# python view_pickle_file.py --pickle_file_path results --script_name $(basename $0 .sh)
 
 echo "Finished $prompt_type --quanitze evaluation of models: ${models[*]}"
 # make it executable with the command chmod +x scriptname.sh

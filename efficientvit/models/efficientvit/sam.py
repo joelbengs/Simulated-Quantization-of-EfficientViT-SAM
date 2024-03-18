@@ -281,36 +281,68 @@ class EfficientViTSam(nn.Module):
                 m.last_calibrate = False
     
     def toggle_quant_on(self):
+        a = 0
+        b = 0
         for m in self.modules():
+            a = a + 1
             if type(m) in [QConvLayer]:
+                b = b + 1
                 m.quant = True
+        print(f"toggle_quant_on has quantized all {b} QConvLayers out of {a} modules.")
+
     
     # quantizes only specificed parts. Can be specified by stages, by block names, by the intersection of both. Can be specified to save bottlenecks
     def toggle_selective_quant_on(
             self, 
             stages=["unknown", "stage0", "stage1", "stage2", "stage4", "stage5"], 
             block_names=['independent', "res", "fmb", "mb", "att", "att@3", "att@3"], # could be more scales, must build a general solution for any scale
-            spare_bottlenecks=False):
-        i = 0
+            spare_bottlenecks=False,
+            spare_attention_qkv=False,
+            spare_attention_scaling=False,
+            spare_attention_projection=False,
+            printout=False):
+        a = b = c = 0
         for m in self.modules():
+            a = a + 1
             if type(m) in [QConvLayer]:
+                b = b + 1
+                if m.block_is_bottleneck and spare_bottlenecks:
+                    if printout: print(f"avoided mod {a} of type {type(m)}: bottleneck: {m.block_name} in {m.stage_id}")
+                    continue # skips to the next iteration
                 if m.block_is_bottleneck is False:
                     if m.stage_id in stages and m.block_name in block_names:
                         m.quant = True
-                        i = i + 1
+                        c = c + 1
+                        if printout:
+                            print(f"quantized mod {a} of type {type(m)}: non-bottleneck {m.block_name} in {m.stage_id}")
                     else:
                         m.quant = False
+                        if printout:
+                            print(f"avoided mod {a} of type {type(m)}: non-bottleneck {m.block_name} in {m.stage_id}")
                 elif m.block_is_bottleneck is True:
+                    print("this should not come straight after skipping a bottleneck")
                     if not spare_bottlenecks:
                         if m.stage_id in stages and m.block_name in block_names:
+                            if printout:
+                                print(f"quantized mod {a} of type {type(m)}: bottleneck {m.block_name} in {m.stage_id}")
                             m.quant = True
-                            i = i + 1
+                            c = c + 1
                         else:
                             m.quant = False
+                            if printout:
+                                print(f"avoided mod {a} of type {type(m)}: bottleneck but on other attruibutes: {m.block_name} in {m.stage_id}")
+                    else:
+                        if printout:
+                            print(f"avoided mod {a} of type {type(m)}: bottleneck: {m.block_name} in {m.stage_id}")
+
                 else:
-                    print("A module with corrupt attributes found")
-        print(f"toggle_selective_quant_on has quantized {i} out of {len(self.modules())} modules.\nStages = {stages} and block_names = {block_names}.")
-        
+                    print(f"A module mod of type {type(m)} with corrupt attributes found")
+            #else:
+             #   if printout:
+                    # print(f"skipped module {a} of type {type(m)}")
+        if printout:
+            print(f"toggle_selective_quant_on has quantized {c} out of {a} modules. There were {b} QConvLayers.\nStages = {stages} and block_names = {block_names}.")
+
 
     def toggle_quant_off(self):
         for m in self.modules():
