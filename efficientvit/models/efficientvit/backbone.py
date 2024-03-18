@@ -727,13 +727,20 @@ class EfficientViTLargeBackboneQuant(nn.Module):
             for _ in range(d):
                 if block_list[stage_id].startswith("att"):
                     stage.append(
-                        EfficientViTBlock(
+                        QEfficientViTBlock(
                             in_channels=in_channels,
                             dim=qkv_dim,
                             expand_ratio=expand_list[stage_id],
-                            scales=(3,) if block_list[stage_id] == "att@3" else (5,),
+                            scales=(3,) if block_list[stage_id] == "att@3" else (5,), # XL-models ONLY use 3scaling, all other only use 5-scaling
                             norm=norm,
                             act_func=act_func,
+                            bit_type=config.BIT_TYPE_W,
+                            calibration_mode=config.CALIBRATION_MODE_W,
+                            observer_str=config.OBSERVER_W,
+                            quantizer_str=config.QUANTIZER_W,
+                            stage_id="stage%d" % stage_id,
+                            block_name=block_list[stage_id],
+                            block_is_bottleneck=False,
                         )
                     )
                 else: # build MBConv or FMBConv

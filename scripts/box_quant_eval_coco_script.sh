@@ -17,11 +17,11 @@ export OMP_NUM_THREADS=$((nb_cpu_threads / nproc_per_node))
 
 # Define the model family and prompt type
 #models=("l0_quant" "l1_quant" "l2_quant" "xl0_quant" "xl1_quant")
-models=("l0_quant")
+models=("l0_quant" "xl1_quant")
 prompt_type=box
 #observer_method_W=("minmax" "ema" "omse" "percentile")
 observer_method_W=("omse")
-backbone_version=1
+backbone_version=2
 
 echo "Starting $prompt_type --quantize evaluation of models: ${models[*]}"
 
@@ -42,6 +42,7 @@ do
     --quantize_W \
     --observer_method_W $omw \
     --backbone_version $backbone_version \
+    --limit_iterations 2500 \
     --script_name $(basename $0 .sh) # removes the .sh extension and the directory scripts/
     #--export_dataframe \
     # --quantize_method_W $qmw \

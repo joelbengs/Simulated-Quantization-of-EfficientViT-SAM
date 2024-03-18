@@ -1032,7 +1032,7 @@ class QLiteMLA(nn.Module):
         norm=(None, "bn2d"),
         act_func=(None, None),
         kernel_func="relu",
-        scales: tuple[int, ...] = (5,),
+        scales: tuple[int, ...] = (5,), # hinting that it should be a tuple of integers, and initializing it with a tuple containing the single integer 5. XL-models have (3,) for some layers. Large models have (5,)
         eps=1.0e-15,
         **kwargs,
     ):
@@ -1063,14 +1063,14 @@ class QLiteMLA(nn.Module):
                     nn.Conv2d(
                         3 * total_dim,
                         3 * total_dim,
-                        scale,
+                        scale, #kernel size
                         padding=get_same_padding(scale),
                         groups=3 * total_dim,
                         bias=use_bias[0],
                     ),
                     nn.Conv2d(3 * total_dim, 3 * total_dim, 1, groups=3 * heads, bias=use_bias[0]),
                 )
-                for scale in scales
+                for scale in scales # only one iteration, with scale = 5 for 'att' and 'att@5', else 3
             ]
         )
         self.kernel_func = build_act(kernel_func, inplace=False)
@@ -1146,7 +1146,7 @@ class QEfficientViTBlock(nn.Module):
         heads_ratio: float = 1.0,
         dim=32,
         expand_ratio: float = 4,
-        scales=(5,),
+        scales=(5,),            #XL-models have (3,) for some layers. Large models have (5,)
         norm="bn2d",
         act_func="hswish",
         **kwargs,
