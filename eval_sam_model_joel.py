@@ -131,8 +131,6 @@ def run_box(efficientvit_sam, dataloader, local_rank):
 
     output = []
     for i, data in enumerate(tqdm(dataloader, disable=local_rank != 0)):        # for each batch of images
-        if i == 25:
-            break
         data = data[0]                                                          # fetch the images?
         sam_image = np.array(Image.open(data["image_path"]).convert("RGB"))     # convert ot RGB image
         predictor.set_image(sam_image)                                          # send image to predictor
