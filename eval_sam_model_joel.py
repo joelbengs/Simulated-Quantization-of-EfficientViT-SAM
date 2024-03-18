@@ -131,6 +131,8 @@ def run_box(efficientvit_sam, dataloader, local_rank):
 
     output = []
     for i, data in enumerate(tqdm(dataloader, disable=local_rank != 0)):        # for each batch of images
+        if i == 25:
+            break
         data = data[0]                                                          # fetch the images?
         sam_image = np.array(Image.open(data["image_path"]).convert("RGB"))     # convert ot RGB image
         predictor.set_image(sam_image)                                          # send image to predictor
@@ -294,27 +296,33 @@ def evaluate_to_dataframe(dataframe, results, prompt_type, dataset, annotation_j
         raise NotImplementedError()
 
 def create_dataframe(prompt_type, columns, script_name: str) -> pd.DataFrame:
+    # add columns
+    if prompt_type == 'box':
+            columns.extend([
+            "all",
+            "large",
+            "medium",
+            "small", 
+            ])
+    elif prompt_type == "point":
+        raise NotImplementedError()
+    elif prompt_type == "box_from_detector":
+        raise NotImplementedError()
+    else:
+        raise NotImplementedError()
+    
+    # fetch existing dataframe, else create new dataframe
     # remove any leading directories and extensions from the script name
     script_name = os.path.basename(script_name)
     script_name = os.path.splitext(script_name)[0]
     file_path = f'results/{script_name}.pkl'
-
+    
     if os.path.exists(file_path):
         df = pd.read_pickle(file_path)
+        for column in columns:
+            if column not in df.columns:
+                df[column] = np.nan
     else:
-        if prompt_type == 'box':
-                columns.extend([
-                "all",
-                "large",
-                "medium",
-                "small", 
-                ])
-        elif prompt_type == "point":
-            raise NotImplementedError()
-        elif prompt_type == "box_from_detector":
-            raise NotImplementedError()
-        else:
-            raise NotImplementedError()
         df = pd.DataFrame(columns=columns)
     return df
 
@@ -532,7 +540,7 @@ if __name__ == "__main__":
     columns = [
         "model",
         "prompt_type",
-        "backbone_version"
+        "backbone_version",
         "quantize_W",
         "quantize_A",
         "quantize_N",
