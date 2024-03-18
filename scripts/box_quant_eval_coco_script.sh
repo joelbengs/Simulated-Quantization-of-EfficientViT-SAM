@@ -21,38 +21,40 @@ models=("l0_quant" "l2_quant" "xl1_quant")
 prompt_type=box
 #observer_method_W=("minmax" "ema" "omse" "percentile")
 observer_method_W=("percentile")
-backbone_version=('1a' '1b' '1c' '1d' '1e' '2a' '2b' '2c' '2d' '2e')
+backbone_version=("1a" "1b" "1c" "1d" "1e" "2a" "2b" "2c" "2d" "2e")
 
 echo "--------- STARTING SCRIPT ---------}"
 for model in "${models[@]}"
 do
-  for omw in "${observer_method_W[@]}"
+  for bbv in "${backbone_version[@]}"
   do
-    echo "Model $model, observer: $omw, backbone_version: $backbone_version"
-    # Run the evaluation command for the current model - with --quantize and configurations
-    torchrun --nproc_per_node=2 \
-    eval_sam_model_joel.py \
-    --dataset coco \
-    --image_root coco/val2017 \
-    --image_root_calibration coco/minitrain2017 \
-    --annotation_json_file coco/annotations/instances_val2017.json \
-    --model $model \
-    --prompt_type $prompt_type \
-    --quantize_W \
-    --observer_method_W $omw \
-    --backbone_version $backbone_version \
-    --limit_iterations 2500 \
-    --export_dataframe \
-    --suppress_print \
-    --script_name $(basename $0 .sh) # removes the .sh extension and the directory scripts/
-    # --quantize_method_W $qmw \
-    # --quantize_A \
-    # --quantize_N \
-    # --quantize_method_A $qma \
-    # --quantize_method_N $qmn \
-    # --observer-method_A $oma \
-    # --observer-method_N $omn \
-      
+    for omw in "${observer_method_W[@]}"
+    do
+      echo "Model $model, observer: $omw, backbone_version: $bbv"
+      # Run the evaluation command for the current model - with --quantize and configurations
+      torchrun --nproc_per_node=2 \
+      eval_sam_model_joel.py \
+      --dataset coco \
+      --image_root coco/val2017 \
+      --image_root_calibration coco/minitrain2017 \
+      --annotation_json_file coco/annotations/instances_val2017.json \
+      --model $model \
+      --prompt_type $prompt_type \
+      --quantize_W \
+      --observer_method_W $omw \
+      --backbone_version $bbv \
+      --limit_iterations 2500 \
+      --export_dataframe \
+      --suppress_print \
+      --script_name $(basename $0 .sh) # removes the .sh extension and the directory scripts/
+      # --quantize_method_W $qmw \
+      # --quantize_A \
+      # --quantize_N \
+      # --quantize_method_A $qma \
+      # --quantize_method_N $qmn \
+      # --observer-method_A $oma \
+      # --observer-method_N $omn \
+    done
   done
 done
 

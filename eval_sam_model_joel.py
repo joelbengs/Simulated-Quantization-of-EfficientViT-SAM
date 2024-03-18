@@ -166,9 +166,8 @@ def calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank):
     efficientvit_sam.toggle_calibrate_on()                                      # sets calibrate = true for all 'relevant' modules
 
     for i, data in enumerate(tqdm(calib_dataloader, disable=local_rank != 0)):  # for each batch of images
-        if i == len(calib_dataloader) - 1 or i == args.limit_iterations - 1:                                       # The lenght of the dataloader is dynamicas data is split over GPUs. zero-based enumeration
-            print("Did reach last_calibration, with i = ", i, len(calib_dataloader))
-            efficientvit_sam.toggle_last_calibrate_on()                               # if second to last batch, set last_calibrate = true for all relevant modules
+        if i == len(calib_dataloader) - 1 or i == args.limit_iterations - 1:    # The lenght of the dataloader is dynamicas data is split over GPUs. zero-based enumeration
+            efficientvit_sam.toggle_last_calibrate_on()                         # if second to last batch, set last_calibrate = true for all relevant modules
         if i == args.limit_iterations:
             break
         data = data[0]                                                          # fetch the images?
