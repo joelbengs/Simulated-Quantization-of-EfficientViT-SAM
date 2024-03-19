@@ -34,7 +34,7 @@ do
   do
     for omw in "${observer_method_W[@]}"
     do
-      echo "Model $model, observer: $omw, backbone_version: $bbv"
+      echo "Model $model, backbone_version: $bbv"
       # Run the evaluation command for the current model - with --quantize and configurations
       torchrun --nproc_per_node=2 \
       eval_sam_model_joel.py \
@@ -47,7 +47,9 @@ do
       --quantize_W \
       --observer_method_W $omw \
       --backbone_version $bbv \
-      --limit_iterations 5 \
+      --limit_iterations 2500 \
+      --suppress_print \
+      --export_dataframe \
       --script_name $(basename $0 .sh) # removes the .sh extension and the directory scripts/
       # --quantize_method_W $qmw \
       # --quantize_A \
