@@ -1057,22 +1057,36 @@ class QLiteMLA(nn.Module):
             conv_is_attention_qkv=True,
             **kwargs,
         )
-        self.aggreg = nn.ModuleList(
-            [
-                nn.Sequential(
-                    nn.Conv2d(
-                        3 * total_dim,
-                        3 * total_dim,
-                        scale, #kernel size
-                        padding=get_same_padding(scale),
-                        groups=3 * total_dim,
-                        bias=use_bias[0],
-                    ),
-                    nn.Conv2d(3 * total_dim, 3 * total_dim, 1, groups=3 * heads, bias=use_bias[0]),
+
+        self.aggreg = nn.ModuleList()
+        for scale in scales: # only one iteration in practice, with scale = 5 for 'att' and 'att@5', else 3
+            seq = nn.Sequential(
+                QConvLayer(
+                    in_channels = 3 * total_dim,
+                    out_channels = 3 * total_dim,
+                    kernel_size=scale,
+                    # padding=get_same_padding(scale), handled inside QConvLayer
+                    groups = 3 * total_dim,
+                    use_bias = use_bias[0],
+                    norm=None,
+                    act_func=None,
+                    conv_is_attention_scaling=True,
+                    **kwargs,
+                ),
+                QConvLayer(
+                    in_channels = 3 * total_dim,
+                    out_channels = 3 * total_dim,
+                    kernel_size = 1,
+                    groups = 3 * heads,
+                    use_bias = use_bias[0],
+                    norm=None,
+                    act_func=None,
+                    conv_is_attention_scaling=True,
+                    **kwargs,
                 )
-                for scale in scales # only one iteration, with scale = 5 for 'att' and 'att@5', else 3
-            ]
-        )
+            )
+            self.aggreg.append(seq)
+
         self.kernel_func = build_act(kernel_func, inplace=False)
 
         self.proj = QConvLayer(

@@ -16,17 +16,20 @@ export OMP_NUM_THREADS=$((nb_cpu_threads / nproc_per_node))
 # Note: Time to execute was the same if this was =1 or =32
 
 # Define the model family and prompt type
-#models=("l0_quant" "l1_quant" "l2_quant" "xl0_quant" "xl1_quant")
-models=("l1_quant" "xl0_quant")
+models=("l0_quant" "l1_quant" "l2_quant" "xl0_quant" "xl1_quant")
+#models=("l0_quant")
 prompt_type=box
 #observer_method_W=("minmax" "ema" "omse" "percentile")
 observer_method_W=("percentile")
-backbone_version=("1a" "1b" "1c" "1d" "1e" "2a" "2b" "2c" "2d" "2e")
+# backbone_version=("1a" "1b" "1c" "1d" "1e" "2a" "2b" "2c" "2d" "2e")
+#backbone_version=("1a")
+
+backbone_version=("3_q_all" "3_q_all_but_stage0" "3_q_all_but_stage1" "3_q_all_but_stage2" "3_q_all_but_stage3" "3_q_all_but_stage4" "3_q_all_but_stage5" "3_q_all_but_bottlenecks" "3_q_all_but_qkv" "4_q_all_but_stage3_bottlenecks" "4_q_all_but_stage3_qkv" "4_q_all_but_stage3_scaling" "4_q_all_but_stage3_projection" "4_q_all_but_stage3_bottleneck_qkv" "4_q_all_but_stage3_bottleneck_scaling" "4_q_all_but_stage3_bottleneck_projection" "4_q_all_but_stage3_bottleneck_qkv_scaling_projection")
 
 echo "--------- STARTING SCRIPT ---------}"
-for model in "${models[@]}"
+for bbv in "${backbone_version[@]}"
 do
-  for bbv in "${backbone_version[@]}"
+  for model in "${models[@]}"
   do
     for omw in "${observer_method_W[@]}"
     do
@@ -43,17 +46,17 @@ do
       --quantize_W \
       --observer_method_W $omw \
       --backbone_version $bbv \
-      --limit_iterations 2500 \
-      --export_dataframe \
-      --suppress_print \
+      --limit_iterations 5 \
       --script_name $(basename $0 .sh) # removes the .sh extension and the directory scripts/
       # --quantize_method_W $qmw \
       # --quantize_A \
       # --quantize_N \
+      # --export_dataframe \
       # --quantize_method_A $qma \
       # --quantize_method_N $qmn \
       # --observer-method_A $oma \
       # --observer-method_N $omn \
+      # --suppress_print \
     done
   done
 done
