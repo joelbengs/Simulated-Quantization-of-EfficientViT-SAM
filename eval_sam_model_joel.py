@@ -23,6 +23,300 @@ from efficientvit.sam_model_zoo import create_sam_model
 from sam_eval_utils import Clicker, evaluate_predictions_on_coco, evaluate_predictions_on_lvis, get_iou_metric, iou
 from quant_config import Config
 
+REGISTERED_BACKBONE_VERSIONS = {
+    # FAMILY 1
+    '1a': {
+        'stages': ["stage0", "stage1", "stage2", "stage3"],
+        'block_names': ["res", "fmb", "fmb", "mb"],
+        'spare_bottlenecks': True,
+    },
+    '1b': {
+        'stages': ["stage0"],
+        'block_names': ["res", "fmb", "fmb", "mb"],
+        'spare_bottlenecks': True,
+    },
+    '1c': {
+        'stages': ["stage1"],
+        'block_names': ["res", "fmb", "fmb", "mb"],
+        'spare_bottlenecks': True,
+    },
+    '1d': {
+        'stages': ["stage2"],
+        'block_names': ["res", "fmb", "fmb", "mb"],
+        'spare_bottlenecks': True,
+    },
+    '1e': {
+        'stages': ["stage3"],
+        'block_names': ["res", "fmb", "fmb", "mb"],
+        'spare_bottlenecks': True,
+    },
+    # FAMILY 2 - to test attention stages
+    '2a': { # " Stage 4 and 5,"
+        'stages': ["stage4", "stage5"],
+        'block_names': ["att", "att@3", "att@5"],
+        'spare_bottlenecks': True,
+        'spare_attention_qkv': False,
+        'spare_attention_scaling': False,
+        'spare_attention_projection': False,
+    },
+    '2b': {
+        'stages': ["stage4", "stage5"],
+        'block_names': ["att", "att@3", "att@5"],
+        'spare_bottlenecks': True,
+        'spare_attention_qkv': True,
+        'spare_attention_scaling': False,
+        'spare_attention_projection': False,
+    },
+    '2c': {
+        'stages': ["stage4", "stage5"],
+        'block_names': ["att", "att@3", "att@5"],
+        'spare_bottlenecks': True,
+        'spare_attention_qkv': False,
+        'spare_attention_scaling': True,
+        'spare_attention_projection': False,
+    },
+    '2d': {
+        'stages': ["stage4", "stage5"],
+        'block_names': ["att", "att@3", "att@5"],
+        'spare_bottlenecks': True,
+        'spare_attention_qkv': False,
+        'spare_attention_scaling': False,
+        'spare_attention_projection': True,
+    },
+    '2e': {
+        'stages': ["stage4", "stage5"],
+        'block_names': ["att", "att@3", "att@5"],
+        'spare_bottlenecks': True,
+        'spare_attention_qkv': True,
+        'spare_attention_scaling': True,
+        'spare_attention_projection': True,
+    },
+    # FAMILY 3 - to test the limits of XL1 - Lift one stage back to FP at a time. The model 3_q_all_convs is the baseline
+    '3_q_all': {
+        'stages': ["stage0", "stage1", "stage2", "stage3", "stage4", "stage5"],
+        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
+        'spare_bottlenecks': False,
+        'spare_attention_qkv': False,
+        'spare_attention_scaling': False,
+        'spare_attention_projection': False,
+    },
+    '3_q_all_but_stage0': {
+        'stages': ["stage1", "stage2", "stage3", "stage4", "stage5"],
+        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
+        'spare_bottlenecks': False,
+        'spare_attention_qkv': False,
+        'spare_attention_scaling': False,
+        'spare_attention_projection': False, 
+    },
+    '3_q_all_but_stage1': {
+        'stages': ["stage0", "stage2", "staeg3" "stage4", "stage5"],
+        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
+        'spare_bottlenecks': False,
+        'spare_attention_qkv': False,
+        'spare_attention_scaling': False,
+        'spare_attention_projection': False,
+    },
+    '3_q_all_but_stage2': {
+        'stages': ["stage0", "stage1", "staeg3" "stage4", "stage5"],
+        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
+        'spare_bottlenecks': False,
+        'spare_attention_qkv': False,
+        'spare_attention_scaling': False,
+        'spare_attention_projection': False,
+    },
+    '3_q_all_but_stage3': {
+        'stages': ["stage0", "stage1", "staeg2" "stage4", "stage5"],
+        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
+        'spare_bottlenecks': True,
+        'spare_attention_qkv': False,
+        'spare_attention_scaling': False,
+        'spare_attention_projection': False,
+    },
+    '3_q_all_but_stage4': {
+        'stages': ["stage0", "stage1", "staeg2" "stage3", "stage5"],
+        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
+        'spare_bottlenecks': True,
+        'spare_attention_qkv': False,
+        'spare_attention_scaling': False,
+        'spare_attention_projection': False,
+    },
+    '3_q_all_but_stage5': {
+        'stages': ["stage0", "stage1", "staeg2" "stage3", "stage4"],
+        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
+        'spare_bottlenecks': True,
+        'spare_attention_qkv': False,
+        'spare_attention_scaling': False,
+        'spare_attention_projection': False,
+    },
+        '3_q_all_but_bottlenecks': {
+        'stages': ["stage0", "stage1", "stage2", "stage3", "stage4", "stage5"],
+        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
+        'spare_bottlenecks': True,
+        'spare_attention_qkv': False,
+        'spare_attention_scaling': False,
+        'spare_attention_projection': False,
+    },
+    '3_q_all_but_qkv': {
+        'stages': ["stage0", "stage1", "stage2", "stage3", "stage4", "stage5"],
+        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
+        'spare_bottlenecks': False,
+        'spare_attention_qkv': True,
+        'spare_attention_scaling': False,
+        'spare_attention_projection': False,
+    },
+    # Family 4 - investigating saving stage 3 together with various things, here one at a time
+    '4_q_all_but_stage3_bottlenecks': {
+        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
+        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
+        'spare_bottlenecks': True,
+        'spare_attention_qkv': False,
+        'spare_attention_scaling': False,
+        'spare_attention_projection': False,
+    },
+    '4_q_all_but_stage3_qkv': {
+        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
+        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
+        'spare_bottlenecks': False,
+        'spare_attention_qkv': True,
+        'spare_attention_scaling': False,
+        'spare_attention_projection': False,
+    },
+    '4_q_all_but_stage3_scaling': {
+        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
+        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
+        'spare_bottlenecks': False,
+        'spare_attention_qkv': False,
+        'spare_attention_scaling': True,
+        'spare_attention_projection': False,
+    },
+    '4_q_all_but_stage3_projection': {
+        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
+        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
+        'spare_bottlenecks': False,
+        'spare_attention_qkv': False,
+        'spare_attention_scaling': False,
+        'spare_attention_projection': True,
+    },
+    # Family 4 part 2 - investigating saving stage3 + bottlenecks + parts of attention. Bias: Bottlenecks are the most important
+    '4_q_all_but_stage3_bottleneck_qkv': {
+        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
+        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
+        'spare_bottlenecks': True,
+        'spare_attention_qkv': True,
+        'spare_attention_scaling': False,
+        'spare_attention_projection': False,
+    },
+    '4_q_all_but_stage3_bottleneck_scaling': {
+        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
+        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
+        'spare_bottlenecks': True,
+        'spare_attention_qkv': False,
+        'spare_attention_scaling': True,
+        'spare_attention_projection': False,
+    },
+    '4_q_all_but_stage3_bottleneck_projection': {
+        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
+        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
+        'spare_bottlenecks': True,
+        'spare_attention_qkv': False,
+        'spare_attention_scaling': False,
+        'spare_attention_projection': True,
+    },
+    '4_q_all_but_stage3_bottleneck_qkv_scaling_projection': {
+        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
+        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
+        'spare_bottlenecks': True,
+        'spare_attention_qkv': True,
+        'spare_attention_scaling': True,
+        'spare_attention_projection': True,
+    },
+    # Family 5 - abalation of block types instead of stages. Based on quantizing everything and then recover slective block types one at a time
+    '5_q_all_but_ResBlocks': {
+        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
+        'block_names': ["mb", "fmb", "att", "att@3", "att@5"],
+        'spare_bottlenecks': False,
+        'spare_attention_qkv': False,
+        'spare_attention_scaling': False,
+        'spare_attention_projection': False,
+    },
+    '5_q_all_but_MBConvs': {
+        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
+        'block_names': ["res", "fmb", "att", "att@3", "att@5"],
+        'spare_bottlenecks': False,
+        'spare_attention_qkv': False,
+        'spare_attention_scaling': False,
+        'spare_attention_projection': False,
+    },
+    '5_q_all_but_FusedMBConvs': {
+        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
+        'block_names': ["res", "mb", "att", "att@3", "att@5"],
+        'spare_bottlenecks': False,
+        'spare_attention_qkv': False,
+        'spare_attention_scaling': False,
+        'spare_attention_projection': False,
+    },
+    '5_q_all_but_Attention': { #should give same results as quantizing all but saving stage 4 + 5 - do check that it is the case!
+        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
+        'block_names': ["res", "mb", "fmb"],
+        'spare_bottlenecks': False,
+        'spare_attention_qkv': False,
+        'spare_attention_scaling': False,
+        'spare_attention_projection': False,
+    },
+    # Family 6 - the inverse of 5 - abalation of block types instead of stages, but start from non-quantized and quantize selectively.
+    '5_q_only_ResBlocks': {
+        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
+        'block_names': ["res"],
+        'spare_bottlenecks': False,
+        'spare_attention_qkv': False,
+        'spare_attention_scaling': False,
+        'spare_attention_projection': False,
+    },
+    '5_q_only_MBConvs': {
+        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
+        'block_names': ["mb"],
+        'spare_bottlenecks': False,
+        'spare_attention_qkv': False,
+        'spare_attention_scaling': False,
+        'spare_attention_projection': False,
+    },
+    '5_q_only_FusedMBConvs': {
+        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
+        'block_names': ["fmb"],
+        'spare_bottlenecks': False,
+        'spare_attention_qkv': False,
+        'spare_attention_scaling': False,
+        'spare_attention_projection': False,
+    },
+    '5_q_only_Attention': { #should give same results as quantizing all but saving stage 4 + 5 - do check that it is the case!
+        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
+        'block_names': ["att", "att@3", "att@5"],
+        'spare_bottlenecks': False,
+        'spare_attention_qkv': False,
+        'spare_attention_scaling': False,
+        'spare_attention_projection': False,
+    },
+}
+
+
+'''
+        # Cosntant: Weight quant = only in matmul.
+        Variables:
+        First input conv: always no.
+        Attention stages as a whole yes-no
+            Attention Relu sub-block yes or no
+            Attention scaling convs yes or no
+            Attention final MBConv (which is not a solo bottleneck) yes or no
+        Convolutional stages yes or no
+        Bottlenecks yes or no
+            Bottlenecks in attention-stages yes or no
+            Bottlenecks in conv-stages yes or no
+        SAM-Neck yes or no
+
+        Calibration method?
+        Layer-wise vs channel-wise?
+        Linear matmul in the attention layers yes or no'''
+
 
 def bbox_xywh_to_xyxy(bbox: list[int]) -> list[int]:
     return [bbox[0], bbox[1], bbox[0] + bbox[2], bbox[1] + bbox[3]]
@@ -131,8 +425,6 @@ def run_box(efficientvit_sam, dataloader, local_rank):
 
     output = []
     for i, data in enumerate(tqdm(dataloader, disable=local_rank != 0)):        # for each batch of images
-        if i == 25:
-            break
         data = data[0]                                                          # fetch the images?
         sam_image = np.array(Image.open(data["image_path"]).convert("RGB"))     # convert ot RGB image
         predictor.set_image(sam_image)                                          # send image to predictor
@@ -162,15 +454,18 @@ def run_box(efficientvit_sam, dataloader, local_rank):
 
 
 def calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank):
+    printout=(local_rank==0)
     efficientvit_sam = efficientvit_sam.cuda(local_rank).eval()                 # move model to correct GPU, and turn on eval mode
     predictor = EfficientViTSamPredictor(efficientvit_sam)                      # create predictor
   
-    efficientvit_sam.toggle_calibrate_on()                                      # sets calibrate = true for all 'relevant' modules
+    # efficientvit_sam.toggle_calibrate_on()                                      # sets calibrate = true for all 'relevant' modules
+    calibrate_on(efficientvit_sam, args.backbone_version)
 
     for i, data in enumerate(tqdm(calib_dataloader, disable=local_rank != 0)):  # for each batch of images
-        if i == len(calib_dataloader) - 1 or i == args.limit_iterations - 1:                                       # The lenght of the dataloader is dynamicas data is split over GPUs. zero-based enumeration
-            print("Did reach last_calibration, with i = ", i, len(calib_dataloader))
-            efficientvit_sam.toggle_last_calibrate_on()                               # if second to last batch, set last_calibrate = true for all relevant modules
+        if i == len(calib_dataloader) - 1 or i == args.limit_iterations - 1:    # The lenght of the dataloader is dynamicas data is split over GPUs. zero-based enumeration
+            #efficientvit_sam.toggle_last_calibrate_on()                         # if second to last batch, set last_calibrate = true for all relevant modules
+            last_calibrate_on(efficientvit_sam, args.backbone_version)
+       
         if i == args.limit_iterations:
             break
         data = data[0]                                                          # fetch the images?
@@ -183,9 +478,12 @@ def calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank):
             bbox = np.array(bbox_xywh_to_xyxy(ann["bbox"]))                     # find bounding box - (i.e. the prompt)
             _ = predict_mask_from_box(predictor, bbox)                          # predict mask from bounding box
     
-    efficientvit_sam.toggle_calibrate_off()                                 # sets calibrate = false for all reelvant modules
-    efficientvit_sam.toggle_last_calibrate_off()                            # sets last_calibrate = false for all reelvant modules
+    #efficientvit_sam.toggle_calibrate_off()                                 # sets calibrate = false for all reelvant modules
+    #efficientvit_sam.toggle_last_calibrate_off()                            # sets last_calibrate = false for all reelvant modules
 
+    calibrate_off(efficientvit_sam, args.backbone_version)
+    last_calibrate_off(efficientvit_sam, args.backbone_version)
+    
 
 def run_point(efficientvit_sam, dataloader, num_click, local_rank):
     efficientvit_sam = efficientvit_sam.cuda(local_rank).eval()
@@ -340,157 +638,59 @@ def save_dataframe_to_file(dataframe: pd.DataFrame, script_name: str) -> None:
     script_name = os.path.splitext(script_name)[0]
     dataframe.to_pickle(path=f'results/{script_name}.pkl')
 
-'''
-        # Cosntant: Weight quant = only in matmul.
-        Variables:
-        First input conv: always no.
-        Attention stages as a whole yes-no
-            Attention Relu sub-block yes or no
-            Attention scaling convs yes or no
-            Attention final MBConv (which is not a solo bottleneck) yes or no
-        Convolutional stages yes or no
-        Bottlenecks yes or no
-            Bottlenecks in attention-stages yes or no
-            Bottlenecks in conv-stages yes or no
-        SAM-Neck yes or no
-
-        Calibration method?
-        Layer-wise vs channel-wise?
-        Linear matmul in the attention layers yes or no
-    '''
-''' Attempt 1: "Save attention-stages, Q the bulk of the buildup"
-        - First Layer: No
-        - Stage 1,2,3: Yes, Q the Convs
-        - Bottlenecks: No, don't Q them ever, they could be important
-        - Attention, stage 4 (+5): No, save them.
-        - Neck: No
-        - Linear matmul in the attention layers: no'''
-''' Attempt 2: "Q the conv-parts in the attention, leave the rest"
-        - First Layer: No
-        - Stage 1,2,3: No
-        - Bottlenecks: No, don't Q them ever, they could be important
-        - Attention, stage 4 (+5): Yes, Q the convolutions in both scaling, QKV, and projection, and output
-        - Neck: No
-        - Linear matmul in the attention layers: no'''
-
-def quantize(efficientvit_sam, backbone_version='0', suppress_print=False):
+def calibrate_on(efficientvit_sam, backbone_version='0', suppress_print=True):
     printout=(local_rank==0 and suppress_print is False)
-
     if backbone_version == '0':
-        ''' Baseline backbone:
-        Quant was applied to all Conv-blocks exlusive of EfficientVi-Modules and the input layer. Neck was also spared.'''
-        efficientvit_sam.toggle_quant_on() # just sets module.quant = true (or = 'int'). Doesn't alter any weights!
-    
-    elif backbone_version == '1a':
-        efficientvit_sam.toggle_selective_quant_on(
-            stages = ["stage0", "stage1", "stage2", "stage3"],
-            block_names = ["res", "fmb", "fmb", "mb"],
-            spare_bottlenecks=True,
-            printout=printout,
-            )
-    
-    elif backbone_version == '1b':
-        efficientvit_sam.toggle_selective_quant_on(
-            stages = ["stage0"],
-            block_names = ["res", "fmb", "fmb", "mb"],
-            spare_bottlenecks=True,
-            printout=printout,
-            )
-        
-    elif backbone_version == '1c':
-        efficientvit_sam.toggle_selective_quant_on(
-            stages = ["stage1"],
-            block_names = ["res", "fmb", "fmb", "mb"],
-            spare_bottlenecks=True,
-            printout=printout,
-            )
-    
-    elif backbone_version == '1d':
-        efficientvit_sam.toggle_selective_quant_on(
-            stages = ["stage2"],
-            block_names = ["res", "fmb", "fmb", "mb"],
-            spare_bottlenecks=True,
-            printout=printout,
-            )
-    
-    elif backbone_version == '1e':
-        efficientvit_sam.toggle_selective_quant_on(
-            stages = ["stage3"],
-            block_names = ["res", "fmb", "fmb", "mb"],
-            spare_bottlenecks=True,
-            printout=printout,
-            )
-
-    elif backbone_version == '2a':
-        efficientvit_sam.toggle_selective_quant_on(
-            stages = ["stage4", "stage5"],
-            block_names = ["att", "att@3", "att@5"],
-            spare_bottlenecks=True,
-            spare_attention_qkv=False,
-            spare_attention_scaling=False,
-            spare_attention_projection=False,
-            printout=printout,
-            )
-        
-    elif backbone_version == '2b':
-        efficientvit_sam.toggle_selective_quant_on(
-            stages = ["stage4", "stage5"],
-            block_names = ["att", "att@3", "att@5"],
-            spare_bottlenecks=True,
-            spare_attention_qkv=True,
-            spare_attention_scaling=False,
-            spare_attention_projection=False,
-            printout=printout,
-            )
-
-    elif backbone_version == '2c':
-        efficientvit_sam.toggle_selective_quant_on(
-            stages = ["stage4", "stage5"],
-            block_names = ["att", "att@3", "att@5"],
-            spare_bottlenecks=True,
-            spare_attention_qkv=False,
-            spare_attention_scaling=True,
-            spare_attention_projection=False,
-            printout=printout,
-            )
-
-    elif backbone_version == '2d':
-        efficientvit_sam.toggle_selective_quant_on(
-            stages = ["stage4", "stage5"],
-            block_names = ["att", "att@3", "att@5"],
-            spare_bottlenecks=True,
-            spare_attention_qkv=False,
-            spare_attention_scaling=False,
-            spare_attention_projection=True,
-            printout=printout,
-            )
-        
-    elif backbone_version == '2e':
-        efficientvit_sam.toggle_selective_quant_on(
-            stages = ["stage4", "stage5"],
-            block_names = ["att", "att@3", "att@5"],
-            spare_bottlenecks=True,
-            spare_attention_qkv=True,
-            spare_attention_scaling=True,
-            spare_attention_projection=True,
-            printout=printout,
-            )
-
+        efficientvit_sam.toggle_calibrate_on()
+    elif backbone_version in REGISTERED_BACKBONE_VERSIONS:
+        efficientvit_sam.toggle_selective_calibrate_on(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
     else:
-        print("Version not yet implemented")
         raise NotImplementedError("Backbone version not yet implemented")
 
+def calibrate_off(efficientvit_sam, backbone_version='0', suppress_print=True):
+    printout=(local_rank==0 and suppress_print is False)
+    if backbone_version == '0':
+        efficientvit_sam.toggle_calibrate_off()
+    elif backbone_version in REGISTERED_BACKBONE_VERSIONS:
+        efficientvit_sam.toggle_selective_calibrate_off(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
+    else:
+        raise NotImplementedError("Backbone version not yet implemented")
+    
+def last_calibrate_on(efficientvit_sam, backbone_version='0', suppress_print=True):
+    printout=(local_rank==0 and suppress_print is False)
+    if backbone_version == '0':
+        efficientvit_sam.toggle_last_calibrate_on()
+    elif backbone_version in REGISTERED_BACKBONE_VERSIONS:
+        efficientvit_sam.toggle_selective_last_calibrate_on(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
+    else:
+        raise NotImplementedError("Backbone version not yet implemented")
 
+def last_calibrate_off(efficientvit_sam, backbone_version='0', suppress_print=True):
+    printout=(local_rank==0 and suppress_print is False)
+    if backbone_version == '0':
+        efficientvit_sam.toggle_last_calibrate_off()
+    elif backbone_version in REGISTERED_BACKBONE_VERSIONS:
+        efficientvit_sam.toggle_selective_last_calibrate_off(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
+    else:
+        raise NotImplementedError("Backbone version not yet implemented")
 
+def quantize_on(efficientvit_sam, backbone_version='0', suppress_print=False):
+    printout=(local_rank==0 and suppress_print is False)
+    if backbone_version == '0':
+        efficientvit_sam.toggle_quant_on()
+    elif backbone_version in REGISTERED_BACKBONE_VERSIONS:
+        efficientvit_sam.toggle_selective_quant_on(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
+    else:
+        raise NotImplementedError("Backbone version not yet implemented")
 
-
-
-
-
-
-
-
-
+def quantize_off(efficientvit_sam, backbone_version='0', suppress_print=False):
+    printout=(local_rank==0 and suppress_print is False)
+    if backbone_version == '0':
+        efficientvit_sam.toggle_quant_off()
+    elif backbone_version in REGISTERED_BACKBONE_VERSIONS:
+        efficientvit_sam.toggle_selective_quant_off(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
+    else:
+        raise NotImplementedError("Backbone version not yet implemented")
 
 
 if __name__ == "__main__":
@@ -601,7 +801,7 @@ if __name__ == "__main__":
             if local_rank == 0 and not args.suppress_print:
                 print("Calibrating point...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
-            quantize(efficientvit_sam, args.backbone_version, args.suppress_print)
+            quantize_on(efficientvit_sam, args.backbone_version, args.suppress_print)
 
         results = run_point(efficientvit_sam, dataloader, args.num_click, local_rank)
 
@@ -610,7 +810,7 @@ if __name__ == "__main__":
             if local_rank == 0 and not args.suppress_print:
                 print("Calibrating box...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
-            quantize(efficientvit_sam, args.backbone_version, args.suppress_print)
+            quantize_on(efficientvit_sam, args.backbone_version, args.suppress_print)
 
         results = run_box(efficientvit_sam, dataloader, local_rank)
 
@@ -619,7 +819,7 @@ if __name__ == "__main__":
             if local_rank == 0 and not args.suppress_print:
                 print("Calibrating box_from_detector...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
-            quantize(efficientvit_sam, args.backbone_version, args.suppress_print)
+            quantize_on(efficientvit_sam, args.backbone_version, args.suppress_print)
 
         results = run_box_from_detector(efficientvit_sam, dataloader, local_rank)
 

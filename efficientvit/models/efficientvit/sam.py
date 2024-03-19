@@ -31,6 +31,7 @@ from efficientvit.models.nn import (
     build_norm,
     ## quantized basic layers ##
     QConvLayer,
+    QConvLayerV2,
     QUpSampleLayer,
     QLinearLayer,
     QIdentityLayer,
@@ -259,56 +260,31 @@ class EfficientViTSam(nn.Module):
     #                 Toggles functions for quantization                 #
     ######################################################################
 
-    def toggle_calibrate_on(self):
-        for m in self.modules():
-            if type(m) in [QConvLayer]:
-                m.calibrate = True
-
-    def toggle_calibrate_off(self):
-        for m in self.modules():
-            if type(m) in [QConvLayer]:
-                m.calibrate = False
-
-    def toggle_last_calibrate_on(self):
-        for m in self.modules():
-            if type(m) in [QConvLayer]:
-                m.last_calibrate = True
-
-    def toggle_last_calibrate_off(self):
-      for m in self.modules():
-            if type(m) in [QConvLayer]:
-                m.last_calibrate = False
-    
-    def toggle_quant_on(self):
-        a = 0
-        b = 0
-        for m in self.modules():
-            a = a + 1
-            if type(m) in [QConvLayer]:
-                b = b + 1
-                m.quant = True
-        print(f"toggle_quant_on has quantized all {b} QConvLayers out of {a} modules.")
-
-    
+      
     # quantizes only specificed parts. Can be specified by stages, by block names, by the intersection of both. Can be specified to save bottlenecks
-    def toggle_selective_quant_on(
+    # toggle the specified attribute for all modules in the intersection of stages and blocknames.
+    # Exclude the 
+    def toggle_selective_attribute(
             self, 
+            attribute: str,
+            attribute_goal_state=True,
+            printout=False,
             stages=["unknown", "stage0", "stage1", "stage2", "stage4", "stage5"], 
-            block_names=['independent', "res", "fmb", "mb", "att", "att@3", "att@5"], # could be more scales, must build a general solution for any scale
+            block_names=['independent', "res", "mb", "fmb", "att", "att@3", "att@5"], # could be more scales, must build a general solution for any scale
             spare_bottlenecks=False,
             spare_attention_qkv=False,
             spare_attention_scaling=False,
             spare_attention_projection=False,
-            printout=False):
+            ):
         a = b = c = 0
         for m in self.modules():
             a = a + 1
-            if type(m) in [QConvLayer]:
+            if type(m) in [QConvLayer, QConvLayerV2]:
                 b = b + 1
+                # TODO: Make these set the attribute to False to protect human logic error - maybe?
                 if m.block_is_bottleneck and spare_bottlenecks:
                     if printout: print(f"spared bottleneck: {m.block_name} in {m.stage_id}", f"                module {a} of type {type(m)}")
                     continue # skips to the next iteration
-
                 if m.block_name.startswith("att"):
                     if m.conv_is_attention_qkv and spare_attention_qkv:
                         if printout: print(f"spared QKV of {m.block_name} in {m.stage_id}", f"                module {a} of type {type(m)}")
@@ -321,18 +297,19 @@ class EfficientViTSam(nn.Module):
                         continue
 
                 if m.stage_id in stages and m.block_name in block_names:
-                    m.quant = True
-                    c = c + 1
-                    if printout: print(f"quantized {m.block_name} in {m.stage_id}", f"                module {a} of type {type(m)}:")
-                else:
-                    m.quant = False
-                    if printout:
-                        print(f"avoided {m.block_name} in {m.stage_id}", f"                module {a} of type {type(m)}")
+                    if hasattr(m, attribute):
+                        setattr(m, attribute, attribute_goal_state)
+                        c = c + 1
+                        if printout: print(f"{attribute} {m.block_name} in {m.stage_id}", f"                module {a} of type {type(m)}:")
+                    else:
+                        print(f"Warning: {attribute} does not exist in {m}")
+                #else:
+                    # if printout: print(f"avoided {m.block_name} in {m.stage_id}", f"                module {a} of type {type(m)}")
             else:
                 if printout and False: # toggle to view all model for debugging
-                    print(f"No quantizaiton implemented for module {a} of type {type(m)}")
+                    print(f"No {attribute} implemented for module {a} of type {type(m)}")
         if printout:
-            print(f"SUMMARY: toggle_selective_quant_on has quantized {c} out of {a} modules. There were {b} QConvLayers.\nStages = {stages} and block_names = {block_names}.")
+            print(f"SUMMARY: toggle_selective has toggled attribute {attribute} to {attribute_goal_state} for {c} out of {a} modules. There were {b} QConvLayers.\nStages = {stages} and block_names = {block_names}.")
             spared_parts = []
             if spare_bottlenecks:
                 spared_parts.append('bottlenecks')
@@ -344,11 +321,57 @@ class EfficientViTSam(nn.Module):
                 spared_parts.append('attention projection')
             print(f"Spared parts: {', '.join(spared_parts)}" if spared_parts else "Did not spare any parts.")
 
+    def toggle_calibrate_on(self):
+        for m in self.modules():
+            if type(m) in [QConvLayer, QConvLayerV2]:
+                m.calibrate = True
+
+    def toggle_calibrate_off(self):
+        for m in self.modules():
+            if type(m) in [QConvLayer, QConvLayerV2]:
+                m.calibrate = False
+
+    def toggle_last_calibrate_on(self):
+        for m in self.modules():
+            if type(m) in [QConvLayer, QConvLayerV2]:
+                m.last_calibrate = True
+
+    def toggle_last_calibrate_off(self):
+      for m in self.modules():
+            if type(m) in [QConvLayer, QConvLayerV2]:
+                m.last_calibrate = False
+    
+    def toggle_quant_on(self):
+        for m in self.modules():
+            if type(m) in [QConvLayer, QConvLayerV2]:
+                m.quant = True
 
     def toggle_quant_off(self):
         for m in self.modules():
-            if type(m) in [QConvLayer]:
+            if type(m) in [QConvLayer, QConvLayerV2]:
                 m.quant = False
+
+    def toggle_selective_calibrate_on(self, **kwargs):
+        self.toggle_selective_attribute(attribute="calibrate", **kwargs,)
+        
+    def toggle_selective_calibrate_off(self, **kwargs):
+        self.toggle_selective_attribute(attribute="calibrate", attribute_goal_state=False, **kwargs,)
+
+    def toggle_selective_last_calibrate_on(self, **kwargs):
+        self.toggle_selective_attribute(attribute="last_calibrate", **kwargs,)
+    
+    def toggle_selective_last_calibrate_off(self, **kwargs):
+        self.toggle_selective_attribute(attribute="last_calibrate", attribute_goal_state=False, **kwargs,)
+
+    def toggle_selective_quant_on(self, **kwargs):
+        self.toggle_selective_attribute(attribute="quant", **kwargs,)
+
+    def toggle_selective_quant_off(self, **kwargs):
+        self.toggle_selective_attribute(attribute="quant", attribute_goal_state=False, **kwargs,)
+
+
+
+  
 
 
 class EfficientViTSamPredictor:
