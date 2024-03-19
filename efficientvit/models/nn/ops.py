@@ -34,6 +34,7 @@ __all__ = [
     "OpSequential",
     ## quantized basic layers ##
     "QConvLayer",
+    "QConvLayerV2", # special inheritance version
     "QUpSampleLayer",
     "QLinearLayer",
     "QIdentityLayer",
@@ -633,14 +634,13 @@ class QConvLayer(nn.Module):
             conv_is_attention_scaling=False,
             conv_is_attention_projection=False,
         ):
-        
         super().__init__()
         padding = get_same_padding(kernel_size)
         padding *= dilation
 
         self.dropout = nn.Dropout2d(dropout, inplace=False) if dropout > 0 else None
         self.conv = nn.Conv2d(
-            in_channels, # the self.conv.weight tensor gets shape: (out_channels, in_channels, kernel_height, kernel_width).
+            in_channels, # the self.conv.weight tensor gets shape: (out_channels, in_channels, kernel_height, kernel_width). It is named .conv. beacuse of this attribute
             out_channels,
             kernel_size=(kernel_size, kernel_size),
             stride=(stride, stride),
@@ -649,8 +649,8 @@ class QConvLayer(nn.Module):
             groups=groups,
             bias=use_bias,
         )
-        self.norm = build_norm(norm, num_features=out_channels) # builds nn.Module
-        self.act = build_act(act_func)  # builds nn.Module
+        self.norm = build_norm(norm, num_features=out_channels) # builds nn.Module if not None
+        self.act = build_act(act_func)  # builds nn.Module if not None
 
         # Custom arguments
         self.quant = quant
@@ -705,6 +705,122 @@ class QConvLayer(nn.Module):
             x = self.act(x)
 
         return x
+
+class QConvLayerV2(nn.Conv2d):
+    def __init__(
+            self,
+            in_channels: int,
+            out_channels: int,
+            kernel_size=3,
+            stride=1,
+            dilation=1,
+            groups=1,
+            use_bias=False,
+            dropout=0,
+            norm="bn2d",
+            act_func="relu",
+            # custom arguments
+            quant=False,
+            calibrate=False,
+            last_calibrate=False,
+            bit_type=BIT_TYPE_DICT['int8'],
+            calibration_mode='layer_wise',
+            observer_str='minmax',
+            quantizer_str='uniform',
+            stage_id='unknown',
+            block_name='independent',
+            block_is_bottleneck=False,
+            conv_is_attention_qkv=False,
+            conv_is_attention_scaling=False,
+            conv_is_attention_projection=False,
+        ):
+        
+        padding = get_same_padding(kernel_size)
+        padding *= dilation
+        super().__init__(
+            in_channels,
+            out_channels,
+            kernel_size=(kernel_size, kernel_size),
+            stride=(stride, stride),
+            padding=padding,
+            dilation=(dilation, dilation),
+            groups=groups,
+            bias=use_bias,
+        )
+
+        self.dropout = nn.Dropout2d(dropout, inplace=False) if dropout > 0 else None
+        '''self.conv = nn.Conv2d(
+            in_channels, # the self.conv.weight tensor gets shape: (out_channels, in_channels, kernel_height, kernel_width). It is named .conv. beacuse of this attribute
+            out_channels,
+            kernel_size=(kernel_size, kernel_size),
+            stride=(stride, stride),
+            padding=padding,
+            dilation=(dilation, dilation),
+            groups=groups,
+            bias=use_bias,
+        )'''
+        self.norm = build_norm(norm, num_features=out_channels) # builds nn.Module if not None
+        self.act = build_act(act_func)  # builds nn.Module if not None
+
+        # Custom arguments
+        self.quant = quant
+        self.calibrate = calibrate
+        self.last_calibrate = last_calibrate
+        self.bit_type = bit_type
+        self.calibration_mode = calibration_mode
+        self.observer_str = observer_str
+        self.quantizer_str = quantizer_str
+        self.module_type = 'conv_weight'
+        self.stage_id = stage_id
+        self.block_name = block_name
+        self.block_is_bottleneck = block_is_bottleneck
+        self.conv_is_attention_qkv = conv_is_attention_qkv
+        self.conv_is_attention_scaling = conv_is_attention_scaling
+        self.conv_is_attention_projection = conv_is_attention_projection
+
+        observer_object = build_observer(self.observer_str, self.module_type, 
+                                       self.bit_type, self.calibration_mode) # in FQ-ViT, this is saved as self.observer for no reason
+        self.quantizer = build_quantizer(self.quantizer_str, self.bit_type,
+                                          observer_object, self.module_type)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # calibrate
+        if self.calibrate:
+            #print(f"Forward method called on device {x.device}. calibrate = {self.calibrate}, last_calib = {self.last_calibrate}")
+            self.quantizer.observer.update(self.weight) # for all batches of calibration data: update statistics
+            #print("Calibration batch processed in QConv2d")
+            if self.last_calibrate:                          # after the last batch, fetch S and Z of the quantizer
+                self.quantizer.update_quantization_params(x) # maybe x is not needed as argument
+                #print("Calibration finished in QConv2d.")
+
+        # dropout
+        if self.dropout is not None:
+            x = self.dropout(x)
+
+        # quantization
+        if self.quant:
+            # quant + dequant the weights
+            w = self.quantizer(self.weight)
+            # passing the parameters from self.conv to F.conv2d
+            x = F.conv2d(x, w, self.bias, self.stride, self.padding, self.dilation, self.groups)
+        else:
+            x = super().forward(x)  # Conv2d is inherited in V2, instead of an attribute
+         
+        # normalization
+        if self.norm:
+            x = self.norm(x) # calls the activation function
+        
+        # activation
+        if self.act:
+            x = self.act(x)
+
+        return x
+
+
+
+
+
+
 
 # Not used for anything??
 class QUpSampleLayer(nn.Module):
@@ -1066,7 +1182,7 @@ class QLiteMLA(nn.Module):
         self.aggreg = nn.ModuleList(
             [
                 nn.Sequential(
-                    QConvLayer(
+                    QConvLayerV2(
                         in_channels = 3 * total_dim,
                         out_channels = 3 * total_dim,
                         kernel_size=scale,
@@ -1078,7 +1194,7 @@ class QLiteMLA(nn.Module):
                         conv_is_attention_scaling=True,
                         **kwargs,
                     ),
-                    QConvLayer(
+                    QConvLayerV2(
                         in_channels = 3 * total_dim,
                         out_channels = 3 * total_dim,
                         kernel_size = 1,

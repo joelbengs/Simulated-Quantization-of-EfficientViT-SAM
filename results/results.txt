@@ -150,3 +150,18 @@ RuntimeError: Error(s) in loading state_dict for EfficientViTSam:
         "image_encoder.backbone.stages.4.op_list.4.context_module.main.aggreg.0.0.weight". 
 
 Traceback (most recent call last):
+
+
+  Missing key(s) in state_dict:
+   "image_encoder.backbone.stages.0.op_list.1.main.conv1.weight", 
+  "image_encoder.backbone.stages.0.op_list.1.main.conv2.weight",
+   "image_encoder.backbone.stages.1.op_list.0.main.spatial_conv.weight", 
+   "image_encoder.backbone.stages.1.op_list.0.main.point_conv.weight", 
+   "image_encoder.backbone.stages.1.op_list.1.main.spatial_conv.weight",
+       
+        Unexpected key(s) in state_dict: 
+        "image_encoder.backbone.stages.0.op_list.1.main.conv1.conv.weight", 
+        "image_encoder.backbone.stages.0.op_list.1.main.conv2.conv.weight", 
+        "image_encoder.backbone.stages.1.op_list.0.main.spatial_conv.conv.weight",
+         "image_encoder.backbone.stages.1.op_list.0.main.point_conv.conv.weight", 
+         "image_encoder.backbone.stages.1.op_list.1.main.spatial_conv.conv.weight", 
