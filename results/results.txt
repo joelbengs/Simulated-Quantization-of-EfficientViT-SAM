@@ -102,3 +102,51 @@ DONE (t=2.35s).
  Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.730
 
 
+model.load_state_dict(weight)
+
+File "/root/miniconda3/envs/efficientvit/lib/python3.10/site-packages/torch/nn/modules/module.py", line 2041, in load_state_dict
+    
+raise RuntimeError('Error(s) in loading state_dict for {}:\n\t{}'.format(
+
+RuntimeError: Error(s) in loading state_dict for EfficientViTSam:
+
+        Missing key(s) in state_dict: 
+        "image_encoder.backbone.stages.4.op_list.1.context_module.main.aggreg.0.0.conv.weight", 
+        "image_encoder.backbone.stages.4.op_list.1.context_module.main.aggreg.0.1.conv.weight", 
+        "image_encoder.backbone.stages.4.op_list.2.context_module.main.aggreg.0.0.conv.weight", 
+        "image_encoder.backbone.stages.4.op_list.2.context_module.main.aggreg.0.1.conv.weight", 
+        "image_encoder.backbone.stages.4.op_list.3.context_module.main.aggreg.0.0.conv.weight", 
+        "image_encoder.backbone.stages.4.op_list.3.context_module.main.aggreg.0.1.conv.weight", 
+        "image_encoder.backbone.stages.4.op_list.4.context_module.main.aggreg.0.0.conv.weight", 
+        "image_encoder.backbone.stages.4.op_list.4.context_module.main.aggreg.0.1.conv.weight". 
+
+        Unexpected key(s) in state_dict: 
+        "image_encoder.backbone.stages.4.op_list.1.context_module.main.aggreg.0.0.weight", 
+        "image_encoder.backbone.stages.4.op_list.1.context_module.main.aggreg.0.1.weight", 
+        "image_encoder.backbone.stages.4.op_list.2.context_module.main.aggreg.0.0.weight", 
+        "image_encoder.backbone.stages.4.op_list.2.context_module.main.aggreg.0.1.weight", 
+        "image_encoder.backbone.stages.4.op_list.3.context_module.main.aggreg.0.0.weight", 
+        "image_encoder.backbone.stages.4.op_list.3.context_module.main.aggreg.0.1.weight", 
+        "image_encoder.backbone.stages.4.op_list.4.context_module.main.aggreg.0.0.weight", 
+        "image_encoder.backbone.stages.4.op_list.4.context_module.main.aggreg.0.1.weight". 
+
+ERROR:torch.distributed.elastic.multiprocessing.api:failed (exitcode: 1) 
+local_rank: 0 (pid: 748120) of binary: /root/miniconda3/envs/efficientvit/bin/python
+
+
+WITH LIST COMPREHENSION
+
+RuntimeError: Error(s) in loading state_dict for EfficientViTSam:
+        Missing key(s) in state_dict: 
+        "image_encoder.backbone.stages.4.op_list.1.context_module.main.aggreg.0.0.conv.weight",
+        "image_encoder.backbone.stages.4.op_list.2.context_module.main.aggreg.0.0.conv.weight", 
+        "image_encoder.backbone.stages.4.op_list.3.context_module.main.aggreg.0.0.conv.weight", # QConvLayer probably
+        "image_encoder.backbone.stages.4.op_list.4.context_module.main.aggreg.0.0.conv.weight". 
+
+        Unexpected key(s) in state_dict: 
+        "image_encoder.backbone.stages.4.op_list.1.context_module.main.aggreg.0.0.weight", 
+        "image_encoder.backbone.stages.4.op_list.2.context_module.main.aggreg.0.0.weight", 
+        "image_encoder.backbone.stages.4.op_list.3.context_module.main.aggreg.0.0.weight", 
+        "image_encoder.backbone.stages.4.op_list.4.context_module.main.aggreg.0.0.weight". 
+
+Traceback (most recent call last):

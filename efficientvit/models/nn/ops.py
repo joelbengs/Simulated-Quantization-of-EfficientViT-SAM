@@ -649,8 +649,8 @@ class QConvLayer(nn.Module):
             groups=groups,
             bias=use_bias,
         )
-        self.norm = build_norm(norm, num_features=out_channels)
-        self.act = build_act(act_func)
+        self.norm = build_norm(norm, num_features=out_channels) # builds nn.Module
+        self.act = build_act(act_func)  # builds nn.Module
 
         # Custom arguments
         self.quant = quant
@@ -1058,22 +1058,43 @@ class QLiteMLA(nn.Module):
             **kwargs,
         )
 
-        self.aggreg = nn.ModuleList()
-        for scale in scales: # only one iteration in practice, with scale = 5 for 'att' and 'att@5', else 3
-            seq = nn.Sequential(
-                QConvLayer(
-                    in_channels = 3 * total_dim,
-                    out_channels = 3 * total_dim,
-                    kernel_size=scale,
-                    # padding=get_same_padding(scale), handled inside QConvLayer
-                    groups = 3 * total_dim,
-                    use_bias = use_bias[0],
-                    norm=None,
-                    act_func=None,
-                    conv_is_attention_scaling=True,
-                    **kwargs,
-                ),
-                QConvLayer(
+        '''
+
+        The pretrained weights have state keys on the form aggreg.0.0.weights, because here nn.Conv2D was used directly unlike elsewhere in EfficientViT
+        Using QConvLayer(nn.Module) causes state dict keys on the form aggreg.0.0.conv.weights, because the nn.Conv2D is an attribute named conv in the module.
+        One solution is to rebuild QConvLayer to inherit from nn.Conv2D instead of nn.Module, but this might alter other state keys in the model.'''
+        self.aggreg = nn.ModuleList(
+            [
+                nn.Sequential(
+                    QConvLayer(
+                        in_channels = 3 * total_dim,
+                        out_channels = 3 * total_dim,
+                        kernel_size=scale,
+                        # padding=get_same_padding(scale), handled inside QConvLayer
+                        groups = 3 * total_dim,
+                        use_bias = use_bias[0],
+                        norm=None,
+                        act_func=None,
+                        conv_is_attention_scaling=True,
+                        **kwargs,
+                    ),
+                    QConvLayer(
+                        in_channels = 3 * total_dim,
+                        out_channels = 3 * total_dim,
+                        kernel_size = 1,
+                        groups = 3 * heads,
+                        use_bias = use_bias[0],
+                        norm=None,
+                        act_func=None,
+                        conv_is_attention_scaling=True,
+                        **kwargs,
+                    )
+                )
+                for scale in scales
+            ]
+        )
+
+        '''         QConvLayer(
                     in_channels = 3 * total_dim,
                     out_channels = 3 * total_dim,
                     kernel_size = 1,
@@ -1083,9 +1104,25 @@ class QLiteMLA(nn.Module):
                     act_func=None,
                     conv_is_attention_scaling=True,
                     **kwargs,
+                )'''
+    
+        '''        self.aggreg = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Conv2d(
+                        3 * total_dim,
+                        3 * total_dim,
+                        scale,
+                        padding=get_same_padding(scale),
+                        groups=3 * total_dim,
+                        bias=use_bias[0],
+                    ),
+                    nn.Conv2d(3 * total_dim, 3 * total_dim, 1, groups=3 * heads, bias=use_bias[0]),
                 )
-            )
-            self.aggreg.append(seq)
+                for scale in scales
+            ]
+        )
+        '''
 
         self.kernel_func = build_act(kernel_func, inplace=False)
 
