@@ -24,7 +24,8 @@ observer_method_W=("percentile")
 # backbone_version=("1a" "1b" "1c" "1d" "1e" "2a" "2b" "2c" "2d" "2e")
 #backbone_version=("1a")
 
-backbone_version=("3_q_all" "3_q_all_but_stage0" "3_q_all_but_stage1" "3_q_all_but_stage2" "3_q_all_but_stage3" "3_q_all_but_stage4" "3_q_all_but_stage5" "3_q_all_but_bottlenecks" "3_q_all_but_qkv" "4_q_all_but_stage3_bottlenecks" "4_q_all_but_stage3_qkv" "4_q_all_but_stage3_scaling" "4_q_all_but_stage3_projection" "4_q_all_but_stage3_bottleneck_qkv" "4_q_all_but_stage3_bottleneck_scaling" "4_q_all_but_stage3_bottleneck_projection" "4_q_all_but_stage3_bottleneck_qkv_scaling_projection")
+#25 versions
+backbone_version=("3_q_all" "3_q_all_but_stage0" "3_q_all_but_stage1" "3_q_all_but_stage2" "3_q_all_but_stage3" "3_q_all_but_stage4" "3_q_all_but_stage5" "3_q_all_but_bottlenecks" "3_q_all_but_qkv" "4_q_all_but_stage3_bottlenecks" "4_q_all_but_stage3_qkv" "4_q_all_but_stage3_scaling" "4_q_all_but_stage3_projection" "4_q_all_but_stage3_bottleneck_qkv" "4_q_all_but_stage3_bottleneck_scaling" "4_q_all_but_stage3_bottleneck_projection" "4_q_all_but_stage3_bottleneck_qkv_scaling_projection" "5_q_all_but_ResBlocks" "5_q_all_but_MBConvs" "5_q_all_but_FusedMBConvs" "5_q_all_but_Attention" "5_q_only_ResBlocks" "5_q_only_MBConvs" "5_q_only_FusedMBConvs" "5_q_only_Attention")
 
 echo "--------- STARTING SCRIPT ---------}"
 for bbv in "${backbone_version[@]}"

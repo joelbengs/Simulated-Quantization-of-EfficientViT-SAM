@@ -31,6 +31,7 @@ from efficientvit.models.nn import (
     build_norm,
     ## quantized basic layers ##
     QConvLayer,
+    QConvLayerV2,
     QUpSampleLayer,
     QLinearLayer,
     QIdentityLayer,
@@ -269,7 +270,7 @@ class EfficientViTSam(nn.Module):
             attribute_goal_state=True,
             printout=False,
             stages=["unknown", "stage0", "stage1", "stage2", "stage4", "stage5"], 
-            block_names=['independent', "res", "fmb", "mb", "att", "att@3", "att@5"], # could be more scales, must build a general solution for any scale
+            block_names=['independent', "res", "mb", "fmb", "att", "att@3", "att@5"], # could be more scales, must build a general solution for any scale
             spare_bottlenecks=False,
             spare_attention_qkv=False,
             spare_attention_scaling=False,
@@ -278,7 +279,7 @@ class EfficientViTSam(nn.Module):
         a = b = c = 0
         for m in self.modules():
             a = a + 1
-            if type(m) in [QConvLayer]:
+            if type(m) in [QConvLayer, QConvLayerV2]:
                 b = b + 1
                 # TODO: Make these set the attribute to False to protect human logic error - maybe?
                 if m.block_is_bottleneck and spare_bottlenecks:
@@ -320,40 +321,39 @@ class EfficientViTSam(nn.Module):
                 spared_parts.append('attention projection')
             print(f"Spared parts: {', '.join(spared_parts)}" if spared_parts else "Did not spare any parts.")
 
-
     def toggle_calibrate_on(self):
         for m in self.modules():
-            if type(m) in [QConvLayer]:
+            if type(m) in [QConvLayer, QConvLayerV2]:
                 m.calibrate = True
 
     def toggle_calibrate_off(self):
         for m in self.modules():
-            if type(m) in [QConvLayer]:
+            if type(m) in [QConvLayer, QConvLayerV2]:
                 m.calibrate = False
 
     def toggle_last_calibrate_on(self):
         for m in self.modules():
-            if type(m) in [QConvLayer]:
+            if type(m) in [QConvLayer, QConvLayerV2]:
                 m.last_calibrate = True
 
     def toggle_last_calibrate_off(self):
       for m in self.modules():
-            if type(m) in [QConvLayer]:
+            if type(m) in [QConvLayer, QConvLayerV2]:
                 m.last_calibrate = False
     
     def toggle_quant_on(self):
         for m in self.modules():
-            if type(m) in [QConvLayer]:
+            if type(m) in [QConvLayer, QConvLayerV2]:
                 m.quant = True
 
     def toggle_quant_off(self):
         for m in self.modules():
-            if type(m) in [QConvLayer]:
+            if type(m) in [QConvLayer, QConvLayerV2]:
                 m.quant = False
 
     def toggle_selective_calibrate_on(self, **kwargs):
         self.toggle_selective_attribute(attribute="calibrate", **kwargs,)
-    
+        
     def toggle_selective_calibrate_off(self, **kwargs):
         self.toggle_selective_attribute(attribute="calibrate", attribute_goal_state=False, **kwargs,)
 
