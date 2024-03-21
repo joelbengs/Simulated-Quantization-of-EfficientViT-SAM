@@ -18,7 +18,6 @@ export OMP_NUM_THREADS=$((nb_cpu_threads / nproc_per_node))
 # Define the model family and prompt type  "l1" "l2" "xl0" "xl1"
 models=("l0" "l1" "l2" "xl0" "xl1")
 #models=("l0" "l1")
-
 #models=("l0_quant" "l1_quant" "l2_quant" "xl0_quant" "xl1_quant")
 #models=("l0_quant")
 prompt_type=box
