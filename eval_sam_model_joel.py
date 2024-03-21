@@ -713,6 +713,7 @@ if __name__ == "__main__":
     # Set args.quantize to True if any of the other quantize arguments are True
     args.quantize = args.quantize_W or args.quantize_A or args.quantize_N
     config = Config(args) # quantization configuration
+    config = Config(args) # quantization configuration
 
     def print(*args, **kwargs):
         if local_rank == 0:
