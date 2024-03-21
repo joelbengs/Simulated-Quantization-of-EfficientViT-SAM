@@ -277,7 +277,7 @@ class EfficientViTSam(nn.Module):
             spare_attention_projection=False,
             ):
         a = b = c = 0
-        for m in self.modules():
+        for m in self.modules(): #includes the backbone, nect, prompt encoder and prompt decoder.
             a = a + 1
             if type(m) in [QConvLayer, QConvLayerV2]:
                 b = b + 1
@@ -368,6 +368,9 @@ class EfficientViTSam(nn.Module):
 
     def toggle_selective_quant_off(self, **kwargs):
         self.toggle_selective_attribute(attribute="quant", attribute_goal_state=False, **kwargs,)
+
+   # def get_number_of_quantized_params(self):
+
 
 
 class EfficientViTSamPredictor:

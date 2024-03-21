@@ -301,25 +301,6 @@ REGISTERED_BACKBONE_VERSIONS = {
 }
 
 
-'''
-        # Cosntant: Weight quant = only in matmul.
-        Variables:
-        First input conv: always no.
-        Attention stages as a whole yes-no
-            Attention Relu sub-block yes or no
-            Attention scaling convs yes or no
-            Attention final MBConv (which is not a solo bottleneck) yes or no
-        Convolutional stages yes or no
-        Bottlenecks yes or no
-            Bottlenecks in attention-stages yes or no
-            Bottlenecks in conv-stages yes or no
-        SAM-Neck yes or no
-
-        Calibration method?
-        Layer-wise vs channel-wise?
-        Linear matmul in the attention layers yes or no'''
-
-
 def bbox_xywh_to_xyxy(bbox: list[int]) -> list[int]:
     return [bbox[0], bbox[1], bbox[0] + bbox[2], bbox[1] + bbox[3]]
 
@@ -695,6 +676,10 @@ def quantize_off(efficientvit_sam, backbone_version='0', suppress_print=False):
     else:
         raise NotImplementedError("Backbone version not yet implemented")
 
+#def get_number_of_quantized_params(efficientvit_sam):
+#    n = efficientvit_sam.get_number_of_quantized_params
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str)
@@ -734,12 +719,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
     # Set args.quantize to True if any of the other quantize arguments are True
     args.quantize = args.quantize_W or args.quantize_A or args.quantize_N
+    config = Config(args) # quantization configuration
 
     def print(*args, **kwargs):
         if local_rank == 0:
             __builtins__.print(*args, **kwargs)
     # del print
-
 
     # TODO: Implement for all three val types
     # TODO: Quantize norms and activations, i.e. make the config work.
@@ -766,7 +751,6 @@ if __name__ == "__main__":
         "limit_iterations"
     ]
 
-    config = Config(args) # quantization configuration
     if args.single_gpu:
         local_rank = 0
         if local_rank == 0 and not args.suppress_print: # only master process prints
