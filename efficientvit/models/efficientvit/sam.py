@@ -370,10 +370,6 @@ class EfficientViTSam(nn.Module):
         self.toggle_selective_attribute(attribute="quant", attribute_goal_state=False, **kwargs,)
 
 
-
-  
-
-
 class EfficientViTSamPredictor:
     def __init__(self, sam_model: EfficientViTSam) -> None:
         self.model = sam_model

@@ -52,6 +52,98 @@ if __name__ == "__main__":
 
     '''
 
+    base_model_sizes = {
+        'L0': {'Total params': 30728224, 'Total mult-adds (G)': 104.45},
+        'L1': {'Total params': 43585568, 'Total mult-adds (G)': 128.74},
+        'L2': {'Total params': 57264032, 'Total mult-adds (G)': 174.16},
+        'XL0': {'Total params': 112893344, 'Total mult-adds (G)': 182.95},
+        'XL1': {'Total params': 199281568, 'Total mult-adds (G)': 318.81}
+        }
+
+
+    model_params_per_stage = {
+        'L0': {
+            'Total params': 30728224,
+            'Total mult-adds (G)': 104.45,
+            'stage0': 19488,
+            'stage1': 345856,
+            'stage2': 1379840,
+            'stage3': 2953728,
+            'stage4': 23106560,
+            'stage5': 0,
+            'stage0_bottleneck': 928,
+            'stage1_bottleneck': 181376,
+            'stage2_bottleneck': 723200,
+            'stage3_bottleneck': 809472,
+            'stage4_bottleneck': 4787200,
+            'stage5_bottleneck': 0,
+        },
+        'L1': {
+            'Total params': 43585568, 
+            'Total mult-adds (G)': 128.74,
+            'stage0': 19488,
+            'stage1': 345856,
+            'stage2': 1379840,
+            'stage3': 4025856,
+            'stage4': 32266240,
+            'stage5': 0,
+            'stage0_bottleneck': 928,
+            'stage1_bottleneck': 181376,
+            'stage2_bottleneck': 723200,
+            'stage3_bottleneck': 809472,
+            'stage4_bottleneck': 4787200,
+            'stage5_bottleneck': 0,
+        },
+        'L2': {
+            'Total params': 57264032, 
+            'Total mult-adds (G)': 174.16,
+            'stage0': 19488,
+            'stage1': 510336,
+            'stage2': 2036480,
+            'stage3': 5097984,
+            'stage4': 41425920,
+            'stage5': 0,
+            'stage0_bottleneck': 928,
+            'stage1_bottleneck': 181376,
+            'stage2_bottleneck': 723200,
+            'stage3_bottleneck': 809472,
+            'stage4_bottleneck': 4787200,
+            'stage5_bottleneck': 0,
+        },
+        'XL0': {
+            'Total params': 112893344, 
+            'Total mult-adds (G)': 182.95,
+            'stage0': 928,
+            'stage1': 345856,
+            'stage2': 1379840,
+            'stage3': 8136192,
+            'stage4': 13678080,
+            'stage5': 73081856,
+            'stage0_bottleneck': 928,
+            'stage1_bottleneck': 181376,
+            'stage2_bottleneck': 723200,
+            'stage3_bottleneck': 2888192,
+            'stage4_bottleneck': 3191808,
+            'stage5_bottleneck': 19011584,
+        },
+        'XL1': {
+            'Total params': 199281568, 
+            'Total mult-adds (G)': 318.81,
+            'stage0': 19488,
+            'stage1': 510336,
+            'stage2': 2036480,
+            'stage3': 13384192,
+            'stage4': 24164352,
+            'stage5': 127152128,
+            'stage0_bottleneck': 928,
+            'stage1_bottleneck': 181376,
+            'stage2_bottleneck': 723200,
+            'stage3_bottleneck': 2888192,
+            'stage4_bottleneck': 3191808,
+            'stage5_bottleneck': 19011584,
+        }
+    }
+
 
     # Apend the baselines for plotting
     new_data = [
@@ -77,18 +169,18 @@ if __name__ == "__main__":
     markers = ['o', 'v', '^', '<', '>', 's', 'p', '*', 'h', 'H', 'D', 'd', 'P', 'X']
 
 
-    for n in ("3","4","5"):
+    for n in ("3","4","5_q_all", "5_q_only"):
         fig, ax = plt.subplots()
         #iterate over the groups
 
         # TODO: Find any group whose name contains the string "baseline" and plot that group in the plot
 
-        for name, group in grouped:
+        for i, (name, group) in enumerate(grouped):
             if name.startswith(n):
                 # Plot performance against base model for each backbone
-                linestyle='solid' if 'only' in name else '--'
+                linestyle='dotted' if i % 2 == 0 else '--'
                 ax.plot(group['model'], group['all'], label=name, linestyle=linestyle) # + np.random.uniform(0,0,len(group['all']))
-            if 'baseline' in name:
+            elif 'baseline' in name:
                 color = 'red' if 'FP32' in name else 'black'
                 ax.plot(group['model'], group['all'], label=name, linestyle='dotted', marker = 'x', color=color)
 

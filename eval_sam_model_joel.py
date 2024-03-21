@@ -17,6 +17,7 @@ from pycocotools.coco import COCO
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
+from torchinfo import summary
 
 from efficientvit.models.efficientvit.sam import EfficientViTSamPredictor
 from efficientvit.sam_model_zoo import create_sam_model
@@ -24,6 +25,7 @@ from sam_eval_utils import Clicker, evaluate_predictions_on_coco, evaluate_predi
 from quant_config import Config
 
 REGISTERED_BACKBONE_VERSIONS = {
+    # FP32 non-qunatized baseline has name '0'
     # FAMILY 1
     '1a': {
         'stages': ["stage0", "stage1", "stage2", "stage3"],
@@ -425,6 +427,7 @@ def run_box(efficientvit_sam, dataloader, local_rank):
 
     output = []
     for i, data in enumerate(tqdm(dataloader, disable=local_rank != 0)):        # for each batch of images
+        if i == 10: break
         data = data[0]                                                          # fetch the images?
         sam_image = np.array(Image.open(data["image_path"]).convert("RGB"))     # convert ot RGB image
         predictor.set_image(sam_image)                                          # send image to predictor
@@ -692,7 +695,6 @@ def quantize_off(efficientvit_sam, backbone_version='0', suppress_print=False):
     else:
         raise NotImplementedError("Backbone version not yet implemented")
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str)
@@ -711,6 +713,7 @@ if __name__ == "__main__":
     parser.add_argument('--export_dataframe', action="store_true")
     parser.add_argument('--script_name', type=str)
     parser.add_argument('--limit_iterations', type=int, default=-1)
+    parser.add_argument('--print_torchinfo', action='store_true')
 
     parser.add_argument("--quantize", action="store_true", help="Turn on quantization and calibration for weights, activations, or norms")
     parser.add_argument("--quantize_W", action="store_true", help="Turn on quantization and calibration for weights")
@@ -731,6 +734,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
     # Set args.quantize to True if any of the other quantize arguments are True
     args.quantize = args.quantize_W or args.quantize_A or args.quantize_N
+
+    def print(*args, **kwargs):
+        if local_rank == 0:
+            __builtins__.print(*args, **kwargs)
+    # del print
+
 
     # TODO: Implement for all three val types
     # TODO: Quantize norms and activations, i.e. make the config work.
@@ -772,6 +781,11 @@ if __name__ == "__main__":
     # model creation
     efficientvit_sam = create_sam_model(name=args.model, pretrained=True, weight_url=args.weight_url, config=config)
 
+    # print model info
+    if args.print_torchinfo and local_rank == 0:
+        # Use torchinfo.summary to print the model. Depth controls granularity of printout - all params are counted anyhow
+        summary(efficientvit_sam.image_encoder, depth=4, input_size=(1, 3, 2014, 512))
+
     # dataset creation
     dataset = eval_dataset(
         args.dataset, args.image_root, args.prompt_type, args.annotation_json_file, args.source_json_file
@@ -812,7 +826,7 @@ if __name__ == "__main__":
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
             quantize_on(efficientvit_sam, args.backbone_version, args.suppress_print)
 
-        results = run_box(efficientvit_sam, dataloader, local_rank)
+        #results = run_box(efficientvit_sam, dataloader, local_rank)
 
     elif args.prompt_type == "box_from_detector":
         if args.quantize:
@@ -835,4 +849,5 @@ if __name__ == "__main__":
             print("New row added to results: \n", df.tail(1))
             save_dataframe_to_file(df, args.script_name)
         else:
-            evaluate(results, args.prompt_type, args.dataset, args.annotation_json_file)
+            print("")
+            #evaluate(results, args.prompt_type, args.dataset, args.annotation_json_file)
