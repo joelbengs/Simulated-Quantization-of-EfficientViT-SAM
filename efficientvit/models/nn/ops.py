@@ -96,7 +96,7 @@ class ConvLayer(nn.Module):
         if self.act:
             x = self.act(x)
         return x
-
+        
 
 class UpSampleLayer(nn.Module):
     def __init__(
@@ -705,6 +705,12 @@ class QConvLayer(nn.Module):
             x = self.act(x)
 
         return x
+    
+    def parameter_count(self):
+        num_weights = self.conv.weight.numel()
+        num_biases = self.conv.bias.numel() if self.conv.bias is not None else 0
+        return num_weights + num_biases
+
 
 class QConvLayerV2(nn.Conv2d):
     def __init__(
@@ -816,10 +822,10 @@ class QConvLayerV2(nn.Conv2d):
 
         return x
 
-
-
-
-
+    def parameter_count(self):
+        num_weights = self.weight.numel()
+        num_biases = self.bias.numel() if self.bias is not None else 0
+        return num_weights + num_biases
 
 
 # Not used for anything??

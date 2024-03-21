@@ -209,6 +209,65 @@ class EfficientViTSamImageEncoder(nn.Module):
         output = self.norm(output)
         return output
 
+    # quantizes only specificed parts. Can be specified by stages, by block names, by the intersection of both. Can be specified to save bottlenecks
+    # toggle the specified attribute for all modules in the intersection of stages and blocknames.
+    # Exclude the 
+    def toggle_selective_attribute(
+            self, 
+            attribute: str,
+            attribute_goal_state=True,
+            printout=False,
+            stages=["unknown", "stage0", "stage1", "stage2", "stage4", "stage5"], 
+            block_names=['independent', "res", "mb", "fmb", "att", "att@3", "att@5"], # could be more scales, must build a general solution for any scale
+            spare_bottlenecks=False,
+            spare_attention_qkv=False,
+            spare_attention_scaling=False,
+            spare_attention_projection=False,
+            ):
+        count_all = count_candidates = count_affected = 0
+        for m in self.modules():
+            count_all = count_all + 1
+            if type(m) in [QConvLayer, QConvLayerV2]:
+                count_candidates = count_candidates + 1
+                # TODO: Make these set the attribute to False to protect human logic error - maybe?
+                if m.block_is_bottleneck and spare_bottlenecks:
+                    if printout: print(f"spared bottleneck: {m.block_name} in {m.stage_id}", f"                module {count_all} of type {type(m)}")
+                    continue # skips to the next iteration
+                if m.block_name.startswith("att"):
+                    if spare_attention_qkv and m.conv_is_attention_qkv:
+                        if printout: print(f"spared QKV of {m.block_name} in {m.stage_id}", f"                module {count_all} of type {type(m)}")
+                        continue
+                    if spare_attention_scaling and m.conv_is_attention_scaling:
+                        if printout: print(f"spared scaling of {m.block_name} in {m.stage_id}", f"                module {count_all} of type {type(m)}")
+                        continue
+                    if  spare_attention_projection and m.conv_is_attention_projection:
+                        if printout: print(f"spared projection of {m.block_name} in {m.stage_id}", f"                module {count_all} of type {type(m)}")
+                        continue
+
+                if m.stage_id in stages and m.block_name in block_names:
+                    if hasattr(m, attribute):
+                        setattr(m, attribute, attribute_goal_state)
+                        count_affected = count_affected + 1
+                        if printout: print(f"{attribute} {m.block_name} in {m.stage_id}", f"                module {count_all} of type {type(m)}:")
+                    else:
+                        print(f"Warning: {attribute} does not exist in {m}")
+            else:
+                if printout and False: # toggle to view all model for debugging
+                    print(f"No {attribute} implemented for module {count_all} of type {type(m)}")
+        if printout:
+            print(f"SUMMARY: toggle_selective has toggled attribute {attribute} to {attribute_goal_state} for {count_affected} out of {count_all} modules. There were {count_candidates} QConvLayers.\nStages = {stages} and block_names = {block_names}.")
+            spared_parts = []
+            if spare_bottlenecks:
+                spared_parts.append('bottlenecks')
+            if spare_attention_qkv:
+                spared_parts.append('attention qkv')
+            if spare_attention_scaling:
+                spared_parts.append('attention scaling')
+            if spare_attention_projection:
+                spared_parts.append('attention projection')
+            print(f"Spared parts: {', '.join(spared_parts)}" if spared_parts else "Did not spare any parts.")
+
+
 
 class EfficientViTSam(nn.Module):
     mask_threshold: float = 0.0
@@ -260,116 +319,62 @@ class EfficientViTSam(nn.Module):
     #                 Toggles functions for quantization                 #
     ######################################################################
 
-      
-    # quantizes only specificed parts. Can be specified by stages, by block names, by the intersection of both. Can be specified to save bottlenecks
-    # toggle the specified attribute for all modules in the intersection of stages and blocknames.
-    # Exclude the 
-    def toggle_selective_attribute(
-            self, 
-            attribute: str,
-            attribute_goal_state=True,
-            printout=False,
-            stages=["unknown", "stage0", "stage1", "stage2", "stage4", "stage5"], 
-            block_names=['independent', "res", "mb", "fmb", "att", "att@3", "att@5"], # could be more scales, must build a general solution for any scale
-            spare_bottlenecks=False,
-            spare_attention_qkv=False,
-            spare_attention_scaling=False,
-            spare_attention_projection=False,
-            ):
-        a = b = c = 0
-        for m in self.modules(): #includes the backbone, nect, prompt encoder and prompt decoder.
-            a = a + 1
-            if type(m) in [QConvLayer, QConvLayerV2]:
-                b = b + 1
-                # TODO: Make these set the attribute to False to protect human logic error - maybe?
-                if m.block_is_bottleneck and spare_bottlenecks:
-                    if printout: print(f"spared bottleneck: {m.block_name} in {m.stage_id}", f"                module {a} of type {type(m)}")
-                    continue # skips to the next iteration
-                if m.block_name.startswith("att"):
-                    if m.conv_is_attention_qkv and spare_attention_qkv:
-                        if printout: print(f"spared QKV of {m.block_name} in {m.stage_id}", f"                module {a} of type {type(m)}")
-                        continue
-                    if m.conv_is_attention_scaling and spare_attention_scaling:
-                        if printout: print(f"spared scaling of {m.block_name} in {m.stage_id}", f"                module {a} of type {type(m)}")
-                        continue
-                    if m.conv_is_attention_projection and spare_attention_projection:
-                        if printout: print(f"spared projection of {m.block_name} in {m.stage_id}", f"                module {a} of type {type(m)}")
-                        continue
-
-                if m.stage_id in stages and m.block_name in block_names:
-                    if hasattr(m, attribute):
-                        setattr(m, attribute, attribute_goal_state)
-                        c = c + 1
-                        if printout: print(f"{attribute} {m.block_name} in {m.stage_id}", f"                module {a} of type {type(m)}:")
-                    else:
-                        print(f"Warning: {attribute} does not exist in {m}")
-                #else:
-                    # if printout: print(f"avoided {m.block_name} in {m.stage_id}", f"                module {a} of type {type(m)}")
-            else:
-                if printout and False: # toggle to view all model for debugging
-                    print(f"No {attribute} implemented for module {a} of type {type(m)}")
-        if printout:
-            print(f"SUMMARY: toggle_selective has toggled attribute {attribute} to {attribute_goal_state} for {c} out of {a} modules. There were {b} QConvLayers.\nStages = {stages} and block_names = {block_names}.")
-            spared_parts = []
-            if spare_bottlenecks:
-                spared_parts.append('bottlenecks')
-            if spare_attention_qkv:
-                spared_parts.append('attention qkv')
-            if spare_attention_scaling:
-                spared_parts.append('attention scaling')
-            if spare_attention_projection:
-                spared_parts.append('attention projection')
-            print(f"Spared parts: {', '.join(spared_parts)}" if spared_parts else "Did not spare any parts.")
-
     def toggle_calibrate_on(self):
-        for m in self.modules():
+        for m in self.image_encoder.modules():
             if type(m) in [QConvLayer, QConvLayerV2]:
                 m.calibrate = True
 
     def toggle_calibrate_off(self):
-        for m in self.modules():
+        for m in self.image_encoder.modules():
             if type(m) in [QConvLayer, QConvLayerV2]:
                 m.calibrate = False
 
     def toggle_last_calibrate_on(self):
-        for m in self.modules():
+        for m in self.image_encoder.modules():
             if type(m) in [QConvLayer, QConvLayerV2]:
                 m.last_calibrate = True
 
     def toggle_last_calibrate_off(self):
-      for m in self.modules():
+      for m in self.image_encoder.modules():
             if type(m) in [QConvLayer, QConvLayerV2]:
                 m.last_calibrate = False
     
     def toggle_quant_on(self):
-        for m in self.modules():
+        for m in self.image_encoder.modules():
             if type(m) in [QConvLayer, QConvLayerV2]:
                 m.quant = True
 
     def toggle_quant_off(self):
-        for m in self.modules():
+        for m in self.image_encoder.modules():
             if type(m) in [QConvLayer, QConvLayerV2]:
                 m.quant = False
-
+    
     def toggle_selective_calibrate_on(self, **kwargs):
-        self.toggle_selective_attribute(attribute="calibrate", **kwargs,)
+        self.image_encoder.toggle_selective_attribute(attribute="calibrate", **kwargs,)
         
     def toggle_selective_calibrate_off(self, **kwargs):
-        self.toggle_selective_attribute(attribute="calibrate", attribute_goal_state=False, **kwargs,)
+        self.image_encoder.toggle_selective_attribute(attribute="calibrate", attribute_goal_state=False, **kwargs,)
 
     def toggle_selective_last_calibrate_on(self, **kwargs):
-        self.toggle_selective_attribute(attribute="last_calibrate", **kwargs,)
+        self.image_encoder.toggle_selective_attribute(attribute="last_calibrate", **kwargs,)
     
     def toggle_selective_last_calibrate_off(self, **kwargs):
-        self.toggle_selective_attribute(attribute="last_calibrate", attribute_goal_state=False, **kwargs,)
+        self.image_encoder.toggle_selective_attribute(attribute="last_calibrate", attribute_goal_state=False, **kwargs,)
 
     def toggle_selective_quant_on(self, **kwargs):
-        self.toggle_selective_attribute(attribute="quant", **kwargs,)
+        self.image_encoder.toggle_selective_attribute(attribute="quant", **kwargs,)
 
     def toggle_selective_quant_off(self, **kwargs):
-        self.toggle_selective_attribute(attribute="quant", attribute_goal_state=False, **kwargs,)
+        self.image_encoder.toggle_selective_attribute(attribute="quant", attribute_goal_state=False, **kwargs,)
 
-   # def get_number_of_quantized_params(self):
+    def get_number_of_quantized_params(self):
+        n = 0
+        for m in self.image_encoder.modules():
+            if type(m) in [QConvLayer, QConvLayerV2]:
+                if m.quant:
+                    n = n + m.parameter_count()
+        return n
+
 
 
 

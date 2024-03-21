@@ -44,7 +44,7 @@ REGISTERED_BACKBONE_VERSIONS = {
     },
     '1d': {
         'stages': ["stage2"],
-        'block_names': ["res", "fmb", "fmb", "mb"],
+        'block_names': ["res", "fmb" "fmb", "mb"],
         'spare_bottlenecks': True,
     },
     '1e': {
@@ -111,7 +111,7 @@ REGISTERED_BACKBONE_VERSIONS = {
         'spare_attention_projection': False, 
     },
     '3_q_all_but_stage1': {
-        'stages': ["stage0", "stage2", "staeg3" "stage4", "stage5"],
+        'stages': ["stage0", "stage2", "stage3", "stage4", "stage5"],
         'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
         'spare_bottlenecks': False,
         'spare_attention_qkv': False,
@@ -119,7 +119,7 @@ REGISTERED_BACKBONE_VERSIONS = {
         'spare_attention_projection': False,
     },
     '3_q_all_but_stage2': {
-        'stages': ["stage0", "stage1", "staeg3" "stage4", "stage5"],
+        'stages': ["stage0", "stage1", "stage3", "stage4", "stage5"],
         'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
         'spare_bottlenecks': False,
         'spare_attention_qkv': False,
@@ -127,7 +127,7 @@ REGISTERED_BACKBONE_VERSIONS = {
         'spare_attention_projection': False,
     },
     '3_q_all_but_stage3': {
-        'stages': ["stage0", "stage1", "staeg2" "stage4", "stage5"],
+        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
         'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
         'spare_bottlenecks': True,
         'spare_attention_qkv': False,
@@ -135,7 +135,7 @@ REGISTERED_BACKBONE_VERSIONS = {
         'spare_attention_projection': False,
     },
     '3_q_all_but_stage4': {
-        'stages': ["stage0", "stage1", "staeg2" "stage3", "stage5"],
+        'stages': ["stage0", "stage1", "stage2", "stage3", "stage5"],
         'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
         'spare_bottlenecks': True,
         'spare_attention_qkv': False,
@@ -143,14 +143,14 @@ REGISTERED_BACKBONE_VERSIONS = {
         'spare_attention_projection': False,
     },
     '3_q_all_but_stage5': {
-        'stages': ["stage0", "stage1", "staeg2" "stage3", "stage4"],
+        'stages': ["stage0", "stage1", "stage2", "stage3", "stage4"],
         'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
         'spare_bottlenecks': True,
         'spare_attention_qkv': False,
         'spare_attention_scaling': False,
         'spare_attention_projection': False,
     },
-        '3_q_all_but_bottlenecks': {
+    '3_q_all_but_bottlenecks': {
         'stages': ["stage0", "stage1", "stage2", "stage3", "stage4", "stage5"],
         'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
         'spare_bottlenecks': True,
@@ -290,7 +290,7 @@ REGISTERED_BACKBONE_VERSIONS = {
         'spare_attention_scaling': False,
         'spare_attention_projection': False,
     },
-    '5_q_only_Attention': { #should give same results as quantizing all but saving stage 4 + 5 - do check that it is the case!
+    '5_q_only_Attention': {
         'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
         'block_names': ["att", "att@3", "att@5"],
         'spare_bottlenecks': False,
@@ -408,7 +408,6 @@ def run_box(efficientvit_sam, dataloader, local_rank):
 
     output = []
     for i, data in enumerate(tqdm(dataloader, disable=local_rank != 0)):        # for each batch of images
-        if i == 10: break
         data = data[0]                                                          # fetch the images?
         sam_image = np.array(Image.open(data["image_path"]).convert("RGB"))     # convert ot RGB image
         predictor.set_image(sam_image)                                          # send image to predictor
@@ -441,14 +440,11 @@ def calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank):
     printout=(local_rank==0)
     efficientvit_sam = efficientvit_sam.cuda(local_rank).eval()                 # move model to correct GPU, and turn on eval mode
     predictor = EfficientViTSamPredictor(efficientvit_sam)                      # create predictor
-  
-    # efficientvit_sam.toggle_calibrate_on()                                      # sets calibrate = true for all 'relevant' modules
-    calibrate_on(efficientvit_sam, args.backbone_version)
+    calibrate_on(efficientvit_sam, args.backbone_version)                       # sets calibrate = true for all 'relevant' modules
 
     for i, data in enumerate(tqdm(calib_dataloader, disable=local_rank != 0)):  # for each batch of images
-        if i == len(calib_dataloader) - 1 or i == args.limit_iterations - 1:    # The lenght of the dataloader is dynamicas data is split over GPUs. zero-based enumeration
-            #efficientvit_sam.toggle_last_calibrate_on()                         # if second to last batch, set last_calibrate = true for all relevant modules
-            last_calibrate_on(efficientvit_sam, args.backbone_version)
+        if i == len(calib_dataloader) - 1 or i == args.limit_iterations - 1:    # The lenght of the dataloader is dynamicas data is split over GPUs. zero-based enumeration              
+            last_calibrate_on(efficientvit_sam, args.backbone_version)          # if second to last batch, set last_calibrate = true for all relevant modules
        
         if i == args.limit_iterations:
             break
@@ -461,9 +457,6 @@ def calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank):
                 continue
             bbox = np.array(bbox_xywh_to_xyxy(ann["bbox"]))                     # find bounding box - (i.e. the prompt)
             _ = predict_mask_from_box(predictor, bbox)                          # predict mask from bounding box
-    
-    #efficientvit_sam.toggle_calibrate_off()                                 # sets calibrate = false for all reelvant modules
-    #efficientvit_sam.toggle_last_calibrate_off()                            # sets last_calibrate = false for all reelvant modules
 
     calibrate_off(efficientvit_sam, args.backbone_version)
     last_calibrate_off(efficientvit_sam, args.backbone_version)
@@ -676,9 +669,9 @@ def quantize_off(efficientvit_sam, backbone_version='0', suppress_print=False):
     else:
         raise NotImplementedError("Backbone version not yet implemented")
 
-#def get_number_of_quantized_params(efficientvit_sam):
-#    n = efficientvit_sam.get_number_of_quantized_params
-
+def get_number_of_quantized_params(efficientvit_sam):
+    n = efficientvit_sam.get_number_of_quantized_params()
+    print(f"quantized {n} params to int8, saving {3*n} bytes = {3*n/1024/1024} Mb")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -768,7 +761,12 @@ if __name__ == "__main__":
     # print model info
     if args.print_torchinfo and local_rank == 0:
         # Use torchinfo.summary to print the model. Depth controls granularity of printout - all params are counted anyhow
-        summary(efficientvit_sam.image_encoder, depth=4, input_size=(1, 3, 2014, 512))
+        summary(
+            efficientvit_sam.image_encoder, 
+            depth=4,
+            col_names = ("output_size", "num_params", "mult_adds"),
+            input_size=(1, 3, 2014, 512)
+            )
 
     # dataset creation
     dataset = eval_dataset(
@@ -809,8 +807,9 @@ if __name__ == "__main__":
                 print("Calibrating box...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
             quantize_on(efficientvit_sam, args.backbone_version, args.suppress_print)
+            get_number_of_quantized_params(efficientvit_sam)
 
-        #results = run_box(efficientvit_sam, dataloader, local_rank)
+        results = run_box(efficientvit_sam, dataloader, local_rank)
 
     elif args.prompt_type == "box_from_detector":
         if args.quantize:
@@ -834,4 +833,4 @@ if __name__ == "__main__":
             save_dataframe_to_file(df, args.script_name)
         else:
             print("")
-            #evaluate(results, args.prompt_type, args.dataset, args.annotation_json_file)
+            evaluate(results, args.prompt_type, args.dataset, args.annotation_json_file)
