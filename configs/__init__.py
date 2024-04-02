@@ -1,0 +1,1 @@
+from .quant_backbones_zoo import REGISTERED_BACKBONE_VERSIONS
