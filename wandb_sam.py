@@ -19,6 +19,7 @@ from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 from torchinfo import summary
+import wandb
 
 from efficientvit.models.efficientvit.sam import EfficientViTSamPredictor
 from efficientvit.sam_model_zoo import create_sam_model
@@ -126,6 +127,38 @@ class eval_dataset(Dataset):
 def collate_fn(batch):
     return batch
 
+def calibrate_run_point(efficientvit_sam, calib_dataloader, args, local_rank):
+    raise NotImplementedError()
+
+def calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank):
+    printout=(local_rank==0)
+    efficientvit_sam = efficientvit_sam.cuda(local_rank).eval()                 # move model to correct GPU, and turn on eval mode
+    predictor = EfficientViTSamPredictor(efficientvit_sam)                      # create predictor
+    toggle_operation(efficientvit_sam, 'calibrate', 'on', args.backbone_version)                       # sets calibrate = true for all 'relevant' modules
+
+    for i, data in enumerate(tqdm(calib_dataloader, disable=local_rank != 0)):  # for each batch of images
+        if i == len(calib_dataloader) - 1 or i == args.limit_iterations - 1:    # The lenght of the dataloader is dynamicas data is split over GPUs. zero-based enumeration              
+            toggle_operation(efficientvit_sam, 'last_calibrate', 'on', args.backbone_version)          # if second to last batch, set last_calibrate = true for all relevant modules
+       
+        if i == args.limit_iterations:
+            break
+        data = data[0]                                                          # fetch the images?
+        sam_image = np.array(Image.open(data["image_path"]).convert("RGB"))     # convert ot RGB image
+        predictor.set_image(sam_image)                                          # send image to predictor
+        anns = data["anns"]                                                     # fetch annotations for the batch
+        for ann in anns:                                                        # for each annotation
+            if ann["area"] < 1:                                                 # skip of too small bounding box
+                continue
+            bbox = np.array(bbox_xywh_to_xyxy(ann["bbox"]))                     # find bounding box - (i.e. the prompt)
+            _ = predict_mask_from_box(predictor, bbox)                          # predict mask from bounding box
+
+    toggle_operation(efficientvit_sam, 'calibrate', 'off', args.backbone_version)
+    toggle_operation(efficientvit_sam, 'last_calibrate', 'off', args.backbone_version)
+    
+
+def calibrate_run_box_from_detector(efficientvit_sam, calib_dataloader, args, local_rank):
+    raise NotImplementedError()
+
 # Given a bounding box, let the model produce a mask and calculate meanIoU for each mask
 def run_box(efficientvit_sam, dataloader, local_rank):
     efficientvit_sam = efficientvit_sam.cuda(local_rank).eval()                 # move model to correct GPU, and turn on eval mode
@@ -160,32 +193,6 @@ def run_box(efficientvit_sam, dataloader, local_rank):
 
     return merged_outs
 
-
-def calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank):
-    printout=(local_rank==0)
-    efficientvit_sam = efficientvit_sam.cuda(local_rank).eval()                 # move model to correct GPU, and turn on eval mode
-    predictor = EfficientViTSamPredictor(efficientvit_sam)                      # create predictor
-    toggle_operation(efficientvit_sam, 'calibrate', 'on', args.backbone_version)                       # sets calibrate = true for all 'relevant' modules
-
-    for i, data in enumerate(tqdm(calib_dataloader, disable=local_rank != 0)):  # for each batch of images
-        if i == len(calib_dataloader) - 1 or i == args.limit_iterations - 1:    # The lenght of the dataloader is dynamicas data is split over GPUs. zero-based enumeration              
-            toggle_operation(efficientvit_sam, 'last_calibrate', 'on', args.backbone_version)          # if second to last batch, set last_calibrate = true for all relevant modules
-       
-        if i == args.limit_iterations:
-            break
-        data = data[0]                                                          # fetch the images?
-        sam_image = np.array(Image.open(data["image_path"]).convert("RGB"))     # convert ot RGB image
-        predictor.set_image(sam_image)                                          # send image to predictor
-        anns = data["anns"]                                                     # fetch annotations for the batch
-        for ann in anns:                                                        # for each annotation
-            if ann["area"] < 1:                                                 # skip of too small bounding box
-                continue
-            bbox = np.array(bbox_xywh_to_xyxy(ann["bbox"]))                     # find bounding box - (i.e. the prompt)
-            _ = predict_mask_from_box(predictor, bbox)                          # predict mask from bounding box
-
-    toggle_operation(efficientvit_sam, 'calibrate', 'off', args.backbone_version)
-    toggle_operation(efficientvit_sam, 'last_calibrate', 'off', args.backbone_version)
-    
 
 def run_point(efficientvit_sam, dataloader, num_click, local_rank):
     efficientvit_sam = efficientvit_sam.cuda(local_rank).eval()
@@ -233,10 +240,6 @@ def run_point(efficientvit_sam, dataloader, num_click, local_rank):
     return merged_outs
 
 
-def calibrate_run_point(efficientvit_sam, calib_dataloader, args, local_rank):
-    raise NotImplementedError()
-
-
 def run_box_from_detector(efficientvit_sam, dataloader, local_rank):
     efficientvit_sam = efficientvit_sam.cuda(local_rank).eval()
     predictor = EfficientViTSamPredictor(efficientvit_sam)
@@ -260,10 +263,6 @@ def run_box_from_detector(efficientvit_sam, dataloader, local_rank):
     return merged_outs
 
 
-def calibrate_run_box_from_detector(efficientvit_sam, calib_dataloader, args, local_rank):
-    raise NotImplementedError()
-
-
 def evaluate(results, prompt_type, dataset, annotation_json_file=None):
     if prompt_type == "point" or prompt_type == "box":
         print(", ".join([f"{key}={val:.3f}" for key, val in get_iou_metric(results).items()]))
@@ -278,67 +277,6 @@ def evaluate(results, prompt_type, dataset, annotation_json_file=None):
     else:
         raise NotImplementedError()
 
-def evaluate_to_dataframe(dataframe, results, prompt_type, dataset, annotation_json_file=None, args=None):
-    # append each new result to the dataframe, and return the dataframe
-    if prompt_type == "point" or prompt_type == "box":
-        metrics = get_iou_metric(results)
-        for key, val in metrics.items():
-            dataframe.at[dataframe.index[-1], key] = val
-        return dataframe
-        
-    elif prompt_type == "box_from_detector":
-        iou_type = "segm"
-        if dataset == "coco":
-           raise NotImplementedError()
-        elif dataset == "lvis":
-            raise NotImplementedError()
-    else:
-        raise NotImplementedError()
-
-def create_dataframe(prompt_type, columns, script_name: str) -> pd.DataFrame:
-    # add columns
-    if prompt_type == 'box':
-            columns.extend([
-            "all",
-            "large",
-            "medium",
-            "small", 
-            ])
-    elif prompt_type == "point":
-        raise NotImplementedError()
-    elif prompt_type == "box_from_detector":
-        raise NotImplementedError()
-    else:
-        raise NotImplementedError()
-    
-    # fetch existing dataframe, else create new dataframe
-    # remove any leading directories and extensions from the script name
-    script_name = os.path.basename(script_name)
-    script_name = os.path.splitext(script_name)[0]
-    file_path = f'results/{script_name}.pkl'
-    
-    if os.path.exists(file_path):
-        df = pd.read_pickle(file_path)
-        for column in columns:
-            if column not in df.columns:
-                df[column] = np.nan
-    else:
-        df = pd.DataFrame(columns=columns)
-    return df
-
-def metadata_to_dataframe(dataframe: pd.DataFrame, args, columns) -> pd.DataFrame:
-    row_data = {}
-    for column in columns:
-        row_data[column] = getattr(args, column)
-    dataframe = pd.concat([dataframe, pd.DataFrame([row_data])], ignore_index=True)
-    return dataframe
-
-def save_dataframe_to_file(dataframe: pd.DataFrame, script_name: str) -> None:
-    # Save the dataframe as a pickle file in the 'results' directory. Will overwrite.
-    # remove any leading directories and extensions from the script name
-    script_name = os.path.basename(script_name)
-    script_name = os.path.splitext(script_name)[0]
-    dataframe.to_pickle(path=f'results/{script_name}.pkl')
 
 def toggle_operation(efficientvit_sam, operation, state, backbone_version='0', suppress_print=True):
     printout=(local_rank==0 and suppress_print is False)
@@ -350,61 +288,7 @@ def toggle_operation(efficientvit_sam, operation, state, backbone_version='0', s
         getattr(efficientvit_sam, f'toggle_selective_{operation}_{state}')(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
     else:
         raise NotImplementedError("Backbone version not yet implemented")
-    
-    
-def calibrate_on(efficientvit_sam, backbone_version='0', suppress_print=True):
-    printout=(local_rank==0 and suppress_print is False)
-    if backbone_version == '0':
-        efficientvit_sam.toggle_calibrate_on()
-    elif backbone_version in REGISTERED_BACKBONE_VERSIONS:
-        efficientvit_sam.toggle_selective_calibrate_on(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
-    else:
-        raise NotImplementedError("Backbone version not yet implemented")
 
-def calibrate_off(efficientvit_sam, backbone_version='0', suppress_print=True):
-    printout=(local_rank==0 and suppress_print is False)
-    if backbone_version == '0':
-        efficientvit_sam.toggle_calibrate_off()
-    elif backbone_version in REGISTERED_BACKBONE_VERSIONS:
-        efficientvit_sam.toggle_selective_calibrate_off(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
-    else:
-        raise NotImplementedError("Backbone version not yet implemented")
-    
-def last_calibrate_on(efficientvit_sam, backbone_version='0', suppress_print=True):
-    printout=(local_rank==0 and suppress_print is False)
-    if backbone_version == '0':
-        efficientvit_sam.toggle_last_calibrate_on()
-    elif backbone_version in REGISTERED_BACKBONE_VERSIONS:
-        efficientvit_sam.toggle_selective_last_calibrate_on(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
-    else:
-        raise NotImplementedError("Backbone version not yet implemented")
-
-def last_calibrate_off(efficientvit_sam, backbone_version='0', suppress_print=True):
-    printout=(local_rank==0 and suppress_print is False)
-    if backbone_version == '0':
-        efficientvit_sam.toggle_last_calibrate_off()
-    elif backbone_version in REGISTERED_BACKBONE_VERSIONS:
-        efficientvit_sam.toggle_selective_last_calibrate_off(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
-    else:
-        raise NotImplementedError("Backbone version not yet implemented")
-
-def quantize_on(efficientvit_sam, backbone_version='0', suppress_print=False):
-    printout=(local_rank==0 and suppress_print is False)
-    if backbone_version == '0':
-        efficientvit_sam.toggle_quant_on()
-    elif backbone_version in REGISTERED_BACKBONE_VERSIONS:
-        efficientvit_sam.toggle_selective_quant_on(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
-    else:
-        raise NotImplementedError("Backbone version not yet implemented")
-
-def quantize_off(efficientvit_sam, backbone_version='0', suppress_print=False):
-    printout=(local_rank==0 and suppress_print is False)
-    if backbone_version == '0':
-        efficientvit_sam.toggle_quant_off()
-    elif backbone_version in REGISTERED_BACKBONE_VERSIONS:
-        efficientvit_sam.toggle_selective_quant_off(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
-    else:
-        raise NotImplementedError("Backbone version not yet implemented")
 
 def get_number_of_quantized_params(efficientvit_sam):
     n = efficientvit_sam.get_number_of_quantized_params()
@@ -445,88 +329,51 @@ if __name__ == "__main__":
 
     parser.add_argument("--backbone_version", type=str, default='0')
 
-
     args = parser.parse_args()
-    # Set args.quantize to True if any of the other quantize arguments are True
-    args.quantize = args.quantize_W or args.quantize_A or args.quantize_N
-    config = Config(args) # quantization configuration
-    config = Config(args) # quantization configuration
+    args.quantize = args.quantize_W or args.quantize_A or args.quantize_N   # Set args.quantize to True if any of the other quantize arguments are True
 
+    # Override the built-in print function so only master process prints
     def print(*args, **kwargs):
         if local_rank == 0:
             __builtins__.print(*args, **kwargs)
-    # del print
-
-    # TODO: Implement for all three val types
-    # TODO: Quantize norms and activations, i.e. make the config work.
-    
-    # colums for dataframes when running scripts.
-    # TODO: Perhaps these can be built from the arguments of the Config object instead? Not all but half.
-    columns = [
-        "model",
-        "prompt_type",
-        "backbone_version",
-        "quantize_W",
-        "quantize_A",
-        "quantize_N",
-        "observer_method_W",
-        "observer_method_A",
-        "observer_method_N",
-        "quantize_method_W",
-        "quantize_method_A",
-        "quantize_method_N",
-        "num_click",
-        "dataset",
-        "image_root",
-        "image_root_calibration",
-        "limit_iterations"
-    ]
 
     if args.single_gpu:
         local_rank = 0
-        if local_rank == 0 and not args.suppress_print: # only master process prints
+        if not args.suppress_print: 
             print("Using single GPU")
     else:
         local_rank = int(os.environ["LOCAL_RANK"])
         torch.distributed.init_process_group(backend="nccl") # initializing the distributed environment 
-        if local_rank == 0 and not args.suppress_print:
+        if not args.suppress_print:
             print(f"Using {torch.distributed.get_world_size()} GPUs")
     torch.cuda.set_device(local_rank)
     
+    config = Config(args) # quantization configuration
+    wandb_config = {**vars(args), **vars(config)} #gets both the arguments and the quant config class.
+
+    wandb.init(project="project-1", config = wandb_config)
+
     # model creation
     efficientvit_sam = create_sam_model(name=args.model, pretrained=True, weight_url=args.weight_url, config=config)
 
     # print model info
-    if args.print_torchinfo and local_rank == 0:
+    if args.print_torchinfo:
         # Use torchinfo.summary to print the model. Depth controls granularity of printout - all params are counted anyhow
-        summary(
-            efficientvit_sam.image_encoder, 
-            depth=4,
-            col_names = ("output_size", "num_params", "mult_adds"),
-            input_size=(1, 3, 2014, 512)
-            )
+        summary(efficientvit_sam.image_encoder, depth=4, col_names = ("output_size", "num_params", "mult_adds"), input_size=(1, 3, 2014, 512))
 
     # dataset creation
-    dataset = eval_dataset(
-        args.dataset, args.image_root, args.prompt_type, args.annotation_json_file, args.source_json_file
-    )
+    dataset = eval_dataset(args.dataset, args.image_root, args.prompt_type, args.annotation_json_file, args.source_json_file)
     sampler = DistributedSampler(dataset, shuffle=False)
-    dataloader = DataLoader(
-        dataset, batch_size=1, sampler=sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn
-    )
-    if local_rank == 0 and not args.suppress_print:
+    dataloader = DataLoader(dataset, batch_size=1, sampler=sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn)
+    if not args.suppress_print:
         print(f"The dataloader contains {len(dataloader.dataset)} images.")
 
-    # calibration dataset
+    # calibration dataset - only needed for weight quantization
     if args.quantize:
-        calib_dataset = eval_dataset(
-            args.dataset, args.image_root_calibration, args.prompt_type, args.annotation_json_file, args.source_json_file
-        )
+        calib_dataset = eval_dataset(args.dataset, args.image_root_calibration, args.prompt_type, args.annotation_json_file, args.source_json_file)
         calib_sampler = DistributedSampler(calib_dataset, shuffle=False)
-        calib_dataloader = DataLoader(
-            calib_dataset, batch_size=1, sampler=calib_sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn
-        )
-        if local_rank == 0 and not args.suppress_print:
+        calib_dataloader = DataLoader(calib_dataset, batch_size=1, sampler=calib_sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn)
+        if not args.suppress_print:
             print(f"The calibration dataloader contains {len(calib_dataloader.dataset)} images.")
 
     # inference + calibration + quantization
@@ -535,7 +382,7 @@ if __name__ == "__main__":
             if local_rank == 0 and not args.suppress_print:
                 print("Calibrating point...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
-            quantize_on(efficientvit_sam, args.backbone_version, args.suppress_print)
+            toggle_operation(efficientvit_sam, 'quant', 'on', args.backbone_version, args.suppress_print)
 
         results = run_point(efficientvit_sam, dataloader, args.num_click, local_rank)
 
@@ -554,21 +401,17 @@ if __name__ == "__main__":
             if local_rank == 0 and not args.suppress_print:
                 print("Calibrating box_from_detector...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
-            quantize_on(efficientvit_sam, args.backbone_version, args.suppress_print)
+            toggle_operation(efficientvit_sam, args.backbone_version, args.suppress_print)
 
-        results = run_box_from_detector(efficientvit_sam, dataloader, local_rank)
+        results = run_box_from_detector(efficientvit_sam, 'quant', 'on', dataloader, local_rank)
 
     else:
         raise NotImplementedError()
 
     # evaluation - only done my the master process, not other parallell processes
     if local_rank == 0:
-        if args.export_dataframe:
-            df = create_dataframe(args.prompt_type, columns.copy(), args.script_name)
-            df = metadata_to_dataframe(df, args, columns)
-            df = evaluate_to_dataframe(df, results, args.prompt_type, args.dataset, args.annotation_json_file, args=args)
-            print("New row added to results: \n", df.tail(1))
-            save_dataframe_to_file(df, args.script_name)
-        else:
-            print("")
-            evaluate(results, args.prompt_type, args.dataset, args.annotation_json_file)
+        print("")
+        evaluate(results, args.prompt_type, args.dataset, args.annotation_json_file)
+        print(", ".join([f"{key}={val:.3f}" for key, val in get_iou_metric(results).items()]))
+        wandb.log(get_iou_metric(results=results))
+
