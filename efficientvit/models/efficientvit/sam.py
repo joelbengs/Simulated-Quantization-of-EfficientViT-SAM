@@ -205,6 +205,7 @@ class QSamNeck(DAGBlock):
         out_dim: int = 256,
         norm="bn2d",
         act_func="gelu",
+        config=None,
     ):
         inputs = {}
         for fid, in_channel in zip(fid_list, in_channel_list):
@@ -213,9 +214,17 @@ class QSamNeck(DAGBlock):
                     QConvLayer(
                         in_channel, 
                         head_width, 
-                        1, 
+                        kernel_size=1, 
                         norm=norm, 
-                        act_func=None
+                        act_func=None,
+                        # configs
+                        bit_type=config.BIT_TYPE_W,
+                        calibration_mode=config.CALIBRATION_MODE_W,
+                        observer_str=config.OBSERVER_W,
+                        quantizer_str=config.QUANTIZER_W,
+                        stage_id='neck',
+                        block_is_bottleneck=True, #no residual connection exists
+                        block_is_neck=True,
                         ),
                     UpSampleLayer(size=(64, 64)),
                 ]
@@ -224,28 +233,52 @@ class QSamNeck(DAGBlock):
         middle = []
         for _ in range(head_depth):
             if middle_op == "mb":
-                block = MBConv(
+                block = QMBConv(
                     head_width,
                     head_width,
                     expand_ratio=expand_ratio,
                     norm=norm,
                     act_func=(act_func, act_func, None),
+                    # configs
+                    bit_type=config.BIT_TYPE_W,
+                    calibration_mode=config.CALIBRATION_MODE_W,
+                    observer_str=config.OBSERVER_W,
+                    quantizer_str=config.QUANTIZER_W,
+                    stage_id='neck',
+                    block_name=middle_op,
+                    block_is_neck=True,
                 )
             elif middle_op == "fmb":
-                block = FusedMBConv(
+                block = QFusedMBConv(
                     head_width,
                     head_width,
                     expand_ratio=expand_ratio,
                     norm=norm,
                     act_func=(act_func, None),
+                    # configs
+                    bit_type=config.BIT_TYPE_W,
+                    calibration_mode=config.CALIBRATION_MODE_W,
+                    observer_str=config.OBSERVER_W,
+                    quantizer_str=config.QUANTIZER_W,
+                    stage_id='neck',
+                    block_name=middle_op,
+                    block_is_neck=True,
                 )
             elif middle_op == "res":
-                block = ResBlock(
+                block = QResBlock(
                     head_width,
                     head_width,
                     expand_ratio=expand_ratio,
                     norm=norm,
                     act_func=(act_func, None),
+                    # configs
+                    bit_type=config.BIT_TYPE_W,
+                    calibration_mode=config.CALIBRATION_MODE_W,
+                    observer_str=config.OBSERVER_W,
+                    quantizer_str=config.QUANTIZER_W,
+                    stage_id='neck',
+                    block_name=middle_op,
+                    block_is_neck=True,
                 )
             else:
                 raise NotImplementedError
@@ -255,19 +288,28 @@ class QSamNeck(DAGBlock):
         outputs = {
             "sam_encoder": OpSequential(
                 [
-                    ConvLayer(
+                    QConvLayer(
                         head_width,
                         out_dim,
                         1,
                         use_bias=True,
                         norm=None,
                         act_func=None,
+                        # configs
+                        bit_type=config.BIT_TYPE_W,
+                        calibration_mode=config.CALIBRATION_MODE_W,
+                        observer_str=config.OBSERVER_W,
+                        quantizer_str=config.QUANTIZER_W,
+                        stage_id='neck',
+                        block_is_bottleneck=True, #no residual connection exists
+                        block_is_neck=True,
                     ),
                 ]
             )
         }
 
-        super(SamNeck, self).__init__(inputs, "add", None, middle=middle, outputs=outputs)
+        # Creates a DAGblock with the above specified operations
+        super(QSamNeck, self).__init__(inputs, "add", None, middle=middle, outputs=outputs)
 
 
 class EfficientViTSamImageEncoder(nn.Module):
@@ -343,7 +385,6 @@ class EfficientViTSamImageEncoder(nn.Module):
             if spare_attention_projection:
                 spared_parts.append('attention projection')
             print(f"Spared parts: {', '.join(spared_parts)}" if spared_parts else "Did not spare any parts.")
-
 
 
 class EfficientViTSam(nn.Module):
@@ -451,8 +492,6 @@ class EfficientViTSam(nn.Module):
                 if m.quant:
                     n = n + m.parameter_count()
         return n
-
-
 
 
 class EfficientViTSamPredictor:
@@ -854,13 +893,14 @@ def efficientvit_sam_l0_quant(image_size: int = 512, **kwargs) -> EfficientViTSa
 
     backbone = efficientvit_backbone_l0_quant(**kwargs)
 
-    neck = SamNeck(
+    neck = QSamNeck(
         fid_list=["stage4", "stage3", "stage2"],
         in_channel_list=[512, 256, 128],
         head_width=256,
         head_depth=4,
         expand_ratio=1,
         middle_op="fmb",
+        **build_kwargs_from_config(kwargs, QSamNeck),
     )
 
     image_encoder = EfficientViTSamImageEncoder(backbone, neck)
@@ -872,13 +912,14 @@ def efficientvit_sam_l1_quant(image_size: int = 512, **kwargs) -> EfficientViTSa
 
     backbone = efficientvit_backbone_l1_quant(**kwargs)
 
-    neck = SamNeck(
+    neck = QSamNeck(
         fid_list=["stage4", "stage3", "stage2"],
         in_channel_list=[512, 256, 128],
         head_width=256,
         head_depth=8,
         expand_ratio=1,
         middle_op="fmb",
+        **build_kwargs_from_config(kwargs, QSamNeck),
     )
 
     image_encoder = EfficientViTSamImageEncoder(backbone, neck)
@@ -890,13 +931,14 @@ def efficientvit_sam_l2_quant(image_size: int = 512, **kwargs) -> EfficientViTSa
 
     backbone = efficientvit_backbone_l2_quant(**kwargs)
 
-    neck = SamNeck(
+    neck = QSamNeck(
         fid_list=["stage4", "stage3", "stage2"],
         in_channel_list=[512, 256, 128],
         head_width=256,
         head_depth=12,
         expand_ratio=1,
         middle_op="fmb",
+        **build_kwargs_from_config(kwargs, QSamNeck),
     )
 
     image_encoder = EfficientViTSamImageEncoder(backbone, neck)
@@ -915,13 +957,14 @@ def efficientvit_sam_xl0_quant(image_size: int = 1024, **kwargs) -> EfficientViT
         **build_kwargs_from_config(kwargs, EfficientViTLargeBackboneQuant),
     )
 
-    neck = SamNeck(
+    neck = QSamNeck(
         fid_list=["stage5", "stage4", "stage3"],
         in_channel_list=[1024, 512, 256],
         head_width=256,
         head_depth=6,
         expand_ratio=4,
         middle_op="fmb",
+        **build_kwargs_from_config(kwargs, QSamNeck),        
     )
 
     image_encoder = EfficientViTSamImageEncoder(backbone, neck)
@@ -940,13 +983,14 @@ def efficientvit_sam_xl1_quant(image_size: int = 1024, **kwargs) -> EfficientViT
         **build_kwargs_from_config(kwargs, EfficientViTLargeBackboneQuant),
     )
 
-    neck = SamNeck(
+    neck = QSamNeck(
         fid_list=["stage5", "stage4", "stage3"],
         in_channel_list=[1024, 512, 256],
         head_width=256,
         head_depth=12,
         expand_ratio=4,
         middle_op="fmb",
+        **build_kwargs_from_config(kwargs, QSamNeck),
     )
 
     image_encoder = EfficientViTSamImageEncoder(backbone, neck)

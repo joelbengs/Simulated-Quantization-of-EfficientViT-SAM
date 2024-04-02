@@ -24,6 +24,13 @@ from efficientvit.sam_model_zoo import create_sam_model
 from sam_eval_utils import Clicker, evaluate_predictions_on_coco, evaluate_predictions_on_lvis, get_iou_metric, iou
 from quant_config import Config
 
+
+"""
+The neck must be added to stages, the "independent" (or lets change to "dag?") must be added to block names, in order to quantize the neck. Else everything is void.
+In every part, the first convlayer is unaffected now. smart?
+"""
+
+
 REGISTERED_BACKBONE_VERSIONS = {
     # FP32 non-qunatized baseline has name '0'
     # FAMILY 1
@@ -95,8 +102,8 @@ REGISTERED_BACKBONE_VERSIONS = {
     },
     # FAMILY 3 - to test the limits of XL1 - Lift one stage back to FP at a time. The model 3_q_all_convs is the baseline
     '3_q_all': {
-        'stages': ["stage0", "stage1", "stage2", "stage3", "stage4", "stage5"],
-        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
+        'stages': ["stage0", "stage1", "stage2", "stage3", "stage4", "stage5", "neck"],
+        'block_names': ["independent", "res", "mb", "fmb", "att", "att@3", "att@5"],
         'spare_bottlenecks': False,
         'spare_attention_qkv': False,
         'spare_attention_scaling': False,
@@ -299,7 +306,6 @@ REGISTERED_BACKBONE_VERSIONS = {
         'spare_attention_projection': False,
     },
 }
-
 
 def bbox_xywh_to_xyxy(bbox: list[int]) -> list[int]:
     return [bbox[0], bbox[1], bbox[0] + bbox[2], bbox[1] + bbox[3]]

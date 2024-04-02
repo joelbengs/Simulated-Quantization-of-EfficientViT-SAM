@@ -653,7 +653,7 @@ class EfficientViTLargeBackboneQuant(nn.Module):
         #          One Convolution + One or zero ResBlocks (model XL0 has zero)         #
         #################################################################################
 
-        # First Convolution
+        # First Convolution - Now always unquantized!
         stage0 = [
             ConvLayer(
                 in_channels=3,              # RGB input

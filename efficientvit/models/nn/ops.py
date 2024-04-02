@@ -543,6 +543,7 @@ class ResidualBlock(nn.Module):
         return res
 
 # Concat and addition operations - used for SAM
+# Directed Acyclic Graph (DAG) block
 class DAGBlock(nn.Module):
     def __init__(
         self,
@@ -630,6 +631,7 @@ class QConvLayer(nn.Module):
             stage_id='unknown',
             block_name='independent',
             block_is_bottleneck=False,
+            block_is_neck=False,
             conv_is_attention_qkv=False,
             conv_is_attention_scaling=False,
             conv_is_attention_projection=False,
@@ -664,6 +666,7 @@ class QConvLayer(nn.Module):
         self.stage_id = stage_id
         self.block_name = block_name
         self.block_is_bottleneck = block_is_bottleneck
+        self.block_is_neck = block_is_neck
         self.conv_is_attention_qkv = conv_is_attention_qkv
         self.conv_is_attention_scaling = conv_is_attention_scaling
         self.conv_is_attention_projection = conv_is_attention_projection
@@ -735,6 +738,7 @@ class QConvLayerV2(nn.Conv2d):
             quantizer_str='uniform',
             stage_id='unknown',
             block_name='independent',
+            block_is_neck=False,
             block_is_bottleneck=False,
             conv_is_attention_qkv=False,
             conv_is_attention_scaling=False,
@@ -780,6 +784,7 @@ class QConvLayerV2(nn.Conv2d):
         self.stage_id = stage_id
         self.block_name = block_name
         self.block_is_bottleneck = block_is_bottleneck
+        self.block_is_neck = block_is_neck
         self.conv_is_attention_qkv = conv_is_attention_qkv
         self.conv_is_attention_scaling = conv_is_attention_scaling
         self.conv_is_attention_projection = conv_is_attention_projection
@@ -859,17 +864,16 @@ class QLinearLayer(nn.Module):
         norm=None,
         act_func=None,
         # custom arguments
-            # custom arguments
-            quant=False,
-            calibrate=False,
-            last_calibrate=False,
-            bit_type=BIT_TYPE_DICT['int8'],
-            calibration_mode='layer_wise',
-            observer_str='minmax',
-            quantizer_str='uniform',
-            stage_id='unknown',
-            block_name='independent',
-            block_is_bottleneck=False,
+        quant=False,
+        calibrate=False,
+        last_calibrate=False,
+        bit_type=BIT_TYPE_DICT['int8'],
+        calibration_mode='layer_wise',
+        observer_str='minmax',
+        quantizer_str='uniform',
+        stage_id='unknown',
+        block_name='independent',
+        block_is_bottleneck=False,
         ):
         super().__init__()
 
@@ -947,7 +951,7 @@ class QDSConv(nn.Module):
         use_bias=False,
         norm=("bn2d", "bn2d"),
         act_func=("relu6", None),
-        **kwargs
+        **kwargs,
         ):
         super().__init__()
 
