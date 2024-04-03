@@ -304,8 +304,8 @@ def calculate_savings(efficientvit_sam):
     return {
         "megabytes_saved": megabytes_saved,
         "percentage_quantized": percentage_quantized,
-        "model_size_original": model_size_mb_original,
-        "model_size_quantized": model_size_mb_quantized,
+        "model_size_mb_original": model_size_mb_original,
+        "model_size_mb_quantized": model_size_mb_quantized,
     }
 
 

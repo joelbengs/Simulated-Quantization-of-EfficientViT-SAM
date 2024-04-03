@@ -17,8 +17,8 @@ export OMP_NUM_THREADS=$((nb_cpu_threads / nproc_per_node))
 
 # Define the model family and prompt type 
 # WARNING!! Models without _quant in the name will not use the correct backbone!!
-# models=("l0_quant" "l1_quant" "l2_quant" "xl0_quant" "xl1_quant")
-models=("l0_quant" "xl1_quant")
+models=("l0_quant" "l1_quant" "l2_quant" "xl0_quant" "xl1_quant")
+# models=("l0_quant" "xl1_quant")
 prompt_type=box
 #observer_method_W=("minmax" "ema" "omse" "percentile")
 observer_method_W=("percentile")
@@ -28,7 +28,7 @@ observer_method_W=("percentile")
 # 25 versions
 # backbone_version=("3_q_all" "3_q_all_but_stage0" "3_q_all_but_stage1" "3_q_all_but_stage2" "3_q_all_but_stage3" "3_q_all_but_stage4" "3_q_all_but_stage5" "3_q_all_but_bottlenecks" "3_q_all_but_qkv" "4_q_all_but_stage3_bottlenecks" "4_q_all_but_stage3_qkv" "4_q_all_but_stage3_scaling" "4_q_all_but_stage3_projection" "4_q_all_but_stage3_bottleneck_qkv" "4_q_all_but_stage3_bottleneck_scaling" "4_q_all_but_stage3_bottleneck_projection" "4_q_all_but_stage3_bottleneck_qkv_scaling_projection" "5_q_all_but_ResBlocks" "5_q_all_but_MBConvs" "5_q_all_but_FusedMBConvs" "5_q_all_but_Attention" "5_q_only_ResBlocks" "5_q_only_MBConvs" "5_q_only_FusedMBConvs" "5_q_only_Attention")
 # backbone_version=("3_q_all_but_stage1" "3_q_all_but_stage2" "3_q_all_but_stage3" "3_q_all_but_stage4" "3_q_all_but_stage5" "3_q_all_but_bottlenecks" "3_q_all_but_qkv" "4_q_all_but_stage3_bottlenecks" "4_q_all_but_stage3_qkv" "4_q_all_but_stage3_scaling" "4_q_all_but_stage3_projection" "4_q_all_but_stage3_bottleneck_qkv" "4_q_all_but_stage3_bottleneck_scaling" "4_q_all_but_stage3_bottleneck_projection" "4_q_all_but_stage3_bottleneck_qkv_scaling_projection" "5_q_all_but_ResBlocks" "5_q_all_but_MBConvs" "5_q_all_but_FusedMBConvs" "5_q_all_but_Attention" "5_q_only_ResBlocks" "5_q_only_MBConvs" "5_q_only_FusedMBConvs" "5_q_only_Attention")
-backbone_version=("3_q_all" "3_q_all_but_stage1" "3_q_all_but_stage2" "3_q_all_but_stage3" "3_q_all_but_stage4" "3_q_all_but_stage5" "3_q_all_but_bottlenecks")
+backbone_version=("FP32_baseline" "INT8_baseline" "5_q_only_MBConvs")
 
 echo "--------- STARTING SCRIPT ---------}"
 for bbv in "${backbone_version[@]}"
@@ -51,13 +51,14 @@ do
       --backbone_version $bbv \
       --limit_iterations 3 \
       --quantize_W \
+      --export_dataframe \
+      --suppress_print \
       --script_name $(basename $0 .sh) # removes the .sh extension and the directory scripts/
       # --quantize_method_W $qmw \
       # --export_dataframe \
       # --quantize_A \
       # --print_torchinfo \
       # --quantize_N \
-      # --export_dataframe \
       # --quantize_method_A $qma \
       # --quantize_method_N $qmn \
       # --observer-method_A $oma \
@@ -68,7 +69,7 @@ do
 done
 
 # Execute view_results.py
-# python view_pickle_file.py --pickle_file_path results --script_name $(basename $0 .sh) --view_all_columns
+python view_pickle_file.py --pickle_file_path results --script_name $(basename $0 .sh) --view_all_columns
 
 echo "Finished $prompt_type --quanitze evaluation of models: ${models[*]}"
 # make it executable with the command chmod +x scriptname.sh

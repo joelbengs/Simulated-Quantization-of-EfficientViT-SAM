@@ -133,6 +133,8 @@ def run_box(efficientvit_sam, dataloader, local_rank):
 
     output = []
     for i, data in enumerate(tqdm(dataloader, disable=local_rank != 0)):        # for each batch of images
+        if i == 10:
+            break
         data = data[0]                                                          # fetch the images?
         sam_image = np.array(Image.open(data["image_path"]).convert("RGB"))     # convert ot RGB image
         predictor.set_image(sam_image)                                          # send image to predictor
@@ -284,6 +286,10 @@ def evaluate_to_dataframe(dataframe, results, prompt_type, dataset, annotation_j
         metrics = get_iou_metric(results)
         for key, val in metrics.items():
             dataframe.at[dataframe.index[-1], key] = val
+
+        more_metrics = calculate_savings(efficientvit_sam=efficientvit_sam)
+        for key, val in more_metrics.items():
+            dataframe.at[dataframe.index[-1], key] = val
         return dataframe
         
     elif prompt_type == "box_from_detector":
@@ -348,7 +354,6 @@ def toggle_operation(efficientvit_sam, operation, state, backbone_version='FP32_
         getattr(efficientvit_sam, f'toggle_selective_{operation}_{state}')(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
     else:
         raise NotImplementedError("Backbone version not yet implemented")
-    
     
 def calibrate_on(efficientvit_sam, backbone_version='0', suppress_print=True):
     printout=(local_rank==0 and suppress_print is False)
@@ -417,8 +422,8 @@ def calculate_savings(efficientvit_sam):
     return {
         "megabytes_saved": megabytes_saved,
         "percentage_quantized": percentage_quantized,
-        "model_size_original": model_size_mb_original,
-        "model_size_quantized": model_size_mb_quantized,
+        "model_size_mb_original": model_size_mb_original,
+        "model_size_mb_quantized": model_size_mb_quantized,
     }
 
 if __name__ == "__main__":
@@ -454,7 +459,7 @@ if __name__ == "__main__":
     parser.add_argument("--quantize_method_A", default="uniform", choices=["uniform", "log2"]) #TODO - implement this
     parser.add_argument("--quantize_method_N", default="uniform", choices=["uniform", "log2"]) #TODO - implement this
 
-    parser.add_argument("--backbone_version", type=str, default='0')
+    parser.add_argument("--backbone_version", type=str, default='FP32_baseline')
 
 
     args = parser.parse_args()

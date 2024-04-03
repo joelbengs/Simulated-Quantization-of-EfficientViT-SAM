@@ -17,6 +17,14 @@ REGISTERED_BACKBONE_VERSIONS = {
         'spare_attention_scaling': True,
         'spare_attention_projection': True,
     },
+    'INT8_baseline': {
+        'stages': ["stage0", "stage1", "stage2", "stage3", "stage4", "stage5", "neck"],
+        'block_names': ["independent", "res", "mb", "fmb", "att", "att@3", "att@5"],
+        'spare_bottlenecks': False,
+        'spare_attention_qkv': False,
+        'spare_attention_scaling': False,
+        'spare_attention_projection': False,
+    },
     # FAMILY 1
     '1a': {
         'stages': ["stage0", "stage1", "stage2", "stage3"],
@@ -85,14 +93,6 @@ REGISTERED_BACKBONE_VERSIONS = {
         'spare_attention_projection': True,
     },
     # FAMILY 3 - to test the limits of XL1 - Lift one stage back to FP at a time. The model 3_q_all_convs is the baseline
-    '3_q_all': {
-        'stages': ["stage0", "stage1", "stage2", "stage3", "stage4", "stage5", "neck"],
-        'block_names': ["independent", "res", "mb", "fmb", "att", "att@3", "att@5"],
-        'spare_bottlenecks': False,
-        'spare_attention_qkv': False,
-        'spare_attention_scaling': False,
-        'spare_attention_projection': False,
-    },
     '3_q_all_but_stage0': {
         'stages': ["stage1", "stage2", "stage3", "stage4", "stage5", "neck"],
         'block_names': ["independent", "res", "mb", "fmb", "att", "att@3", "att@5"],

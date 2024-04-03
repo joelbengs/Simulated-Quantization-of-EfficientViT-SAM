@@ -38,7 +38,9 @@ if __name__ == "__main__":
     selected_data = df[intersection_columns]
 
     # Print the selected data
+    print("all entries of selected columns of dataframe")
     print(selected_data)
 
     if args.view_all_columns:
+         print("dataframe.tail()")
          print(df.tail())
