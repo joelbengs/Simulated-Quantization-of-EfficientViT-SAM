@@ -89,7 +89,7 @@ do
       --prompt_type $prompt_type \
       --observer_method_W $omw \
       --backbone_version $bbv \
-      --limit_iterations 1 \
+      --limit_iterations 3 \
       --quantize_W \
       --export_dataframe \
       --suppress_print \
