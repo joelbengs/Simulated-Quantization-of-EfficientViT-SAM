@@ -133,8 +133,6 @@ def run_box(efficientvit_sam, dataloader, local_rank):
 
     output = []
     for i, data in enumerate(tqdm(dataloader, disable=local_rank != 0)):        # for each batch of images
-        if i == 10:
-            break
         data = data[0]                                                          # fetch the images?
         sam_image = np.array(Image.open(data["image_path"]).convert("RGB"))     # convert ot RGB image
         predictor.set_image(sam_image)                                          # send image to predictor
@@ -460,7 +458,6 @@ if __name__ == "__main__":
     parser.add_argument("--quantize_method_N", default="uniform", choices=["uniform", "log2"]) #TODO - implement this
 
     parser.add_argument("--backbone_version", type=str, default='FP32_baseline')
-
 
     args = parser.parse_args()
     # Set args.quantize to True if any of the other quantize arguments are True
