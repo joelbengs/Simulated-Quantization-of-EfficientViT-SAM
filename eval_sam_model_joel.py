@@ -340,13 +340,11 @@ def save_dataframe_to_file(dataframe: pd.DataFrame, script_name: str) -> None:
     script_name = os.path.splitext(script_name)[0]
     dataframe.to_pickle(path=f'results/{script_name}.pkl')
 
-def toggle_operation(efficientvit_sam, operation, state, backbone_version='0', suppress_print=True):
+def toggle_operation(efficientvit_sam, operation, state, backbone_version='FP32_baseline', suppress_print=True):
     printout=(local_rank==0 and suppress_print is False)
     if state not in ['on', 'off']:
         raise ValueError("State must be either 'on' or 'off'")
-    if backbone_version == '0':
-        getattr(efficientvit_sam, f'toggle_{operation}_{state}')()
-    elif backbone_version in REGISTERED_BACKBONE_VERSIONS:
+    if backbone_version in REGISTERED_BACKBONE_VERSIONS:
         getattr(efficientvit_sam, f'toggle_selective_{operation}_{state}')(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
     else:
         raise NotImplementedError("Backbone version not yet implemented")
@@ -406,9 +404,22 @@ def quantize_off(efficientvit_sam, backbone_version='0', suppress_print=False):
     else:
         raise NotImplementedError("Backbone version not yet implemented")
 
-def get_number_of_quantized_params(efficientvit_sam):
-    n = efficientvit_sam.get_number_of_quantized_params()
-    print(f"quantized {n} params to int8, saving {3*n} bytes = {3*n/1024/1024} Mb")
+def calculate_savings(efficientvit_sam):
+    # calculates the theorethical savings from the applied quantization. Assumes from FP32 to INT8
+    affected, unaffected = efficientvit_sam.get_number_of_quantized_params() #number of weights
+    total = affected + unaffected
+    bytes_saved = 3*affected
+    megabytes_saved = 3*affected/1024/1024
+    model_size_mb_original = 4*total/1024/1024 # 4 bytes = 32 bits
+    model_size_mb_quantized = model_size_mb_original - megabytes_saved
+    percentage_quantized = 100*(affected/total)
+    print(f"quantized {affected} params to int8, \nsaving {bytes_saved} bytes = {megabytes_saved:.2f} Mb. \n{unaffected} params were unaffected. \n{percentage_quantized:.4f}% reduction.")
+    return {
+        "megabytes_saved": megabytes_saved,
+        "percentage_quantized": percentage_quantized,
+        "model_size_original": model_size_mb_original,
+        "model_size_quantized": model_size_mb_quantized,
+    }
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -450,18 +461,13 @@ if __name__ == "__main__":
     # Set args.quantize to True if any of the other quantize arguments are True
     args.quantize = args.quantize_W or args.quantize_A or args.quantize_N
     config = Config(args) # quantization configuration
-    config = Config(args) # quantization configuration
 
+    # Override the built-in print function so only master process prints
     def print(*args, **kwargs):
         if local_rank == 0:
             __builtins__.print(*args, **kwargs)
-    # del print
-
-    # TODO: Implement for all three val types
-    # TODO: Quantize norms and activations, i.e. make the config work.
     
     # colums for dataframes when running scripts.
-    # TODO: Perhaps these can be built from the arguments of the Config object instead? Not all but half.
     columns = [
         "model",
         "prompt_type",
@@ -496,7 +502,6 @@ if __name__ == "__main__":
     # model creation
     efficientvit_sam = create_sam_model(name=args.model, pretrained=True, weight_url=args.weight_url, config=config)
 
-    # print model info
     if args.print_torchinfo and local_rank == 0:
         # Use torchinfo.summary to print the model. Depth controls granularity of printout - all params are counted anyhow
         summary(
@@ -507,32 +512,24 @@ if __name__ == "__main__":
             )
 
     # dataset creation
-    dataset = eval_dataset(
-        args.dataset, args.image_root, args.prompt_type, args.annotation_json_file, args.source_json_file
-    )
+    dataset = eval_dataset(args.dataset, args.image_root, args.prompt_type, args.annotation_json_file, args.source_json_file)
     sampler = DistributedSampler(dataset, shuffle=False)
-    dataloader = DataLoader(
-        dataset, batch_size=1, sampler=sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn
-    )
-    if local_rank == 0 and not args.suppress_print:
+    dataloader = DataLoader(dataset, batch_size=1, sampler=sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn)
+    if not args.suppress_print:
         print(f"The dataloader contains {len(dataloader.dataset)} images.")
 
     # calibration dataset
     if args.quantize:
-        calib_dataset = eval_dataset(
-            args.dataset, args.image_root_calibration, args.prompt_type, args.annotation_json_file, args.source_json_file
-        )
+        calib_dataset = eval_dataset(args.dataset, args.image_root_calibration, args.prompt_type, args.annotation_json_file, args.source_json_file)
         calib_sampler = DistributedSampler(calib_dataset, shuffle=False)
-        calib_dataloader = DataLoader(
-            calib_dataset, batch_size=1, sampler=calib_sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn
-        )
-        if local_rank == 0 and not args.suppress_print:
+        calib_dataloader = DataLoader(calib_dataset, batch_size=1, sampler=calib_sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn)
+        if not args.suppress_print:
             print(f"The calibration dataloader contains {len(calib_dataloader.dataset)} images.")
 
     # inference + calibration + quantization
     if args.prompt_type == "point":
         if args.quantize:
-            if local_rank == 0 and not args.suppress_print:
+            if not args.suppress_print:
                 print("Calibrating point...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
             quantize_on(efficientvit_sam, args.backbone_version, args.suppress_print)
@@ -541,17 +538,16 @@ if __name__ == "__main__":
 
     elif args.prompt_type == "box":
         if args.quantize:
-            if local_rank == 0 and not args.suppress_print:
+            if not args.suppress_print:
                 print("Calibrating box...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
             toggle_operation(efficientvit_sam, 'quant', 'on', args.backbone_version, args.suppress_print)
-            get_number_of_quantized_params(efficientvit_sam)
 
         results = run_box(efficientvit_sam, dataloader, local_rank)
 
     elif args.prompt_type == "box_from_detector":
         if args.quantize:
-            if local_rank == 0 and not args.suppress_print:
+            if not args.suppress_print:
                 print("Calibrating box_from_detector...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
             quantize_on(efficientvit_sam, args.backbone_version, args.suppress_print)
@@ -572,3 +568,4 @@ if __name__ == "__main__":
         else:
             print("")
             evaluate(results, args.prompt_type, args.dataset, args.annotation_json_file)
+            calculate_savings(efficientvit_sam)
