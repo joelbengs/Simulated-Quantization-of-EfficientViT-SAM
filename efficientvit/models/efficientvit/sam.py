@@ -336,7 +336,7 @@ class EfficientViTSamImageEncoder(nn.Module):
             attribute: str,
             attribute_goal_state=True,
             printout=False,
-            stages=["unknown", "stage0", "stage1", "stage2", "stage4", "stage5"], 
+            stages=["unknown", "stage0", "stage1", "stage2", "stage4", "stage5", "neck"], 
             block_names=['independent', "res", "mb", "fmb", "att", "att@3", "att@5"], # could be more scales, must build a general solution for any scale
             spare_bottlenecks=False,
             spare_attention_qkv=False,
@@ -348,7 +348,7 @@ class EfficientViTSamImageEncoder(nn.Module):
             count_all = count_all + 1
             if type(m) in [QConvLayer, QConvLayerV2]:
                 count_candidates = count_candidates + 1
-                # TODO: Make these set the attribute to False to protect human logic error - maybe?
+                # TODO: Make these set the attribute to False to protect human logic error
                 if m.block_is_bottleneck and spare_bottlenecks:
                     if printout: print(f"spared bottleneck: {m.block_name} in {m.stage_id}", f"                module {count_all} of type {type(m)}")
                     continue # skips to the next iteration
@@ -486,12 +486,15 @@ class EfficientViTSam(nn.Module):
         self.image_encoder.toggle_selective_attribute(attribute="quant", attribute_goal_state=False, **kwargs,)
 
     def get_number_of_quantized_params(self):
-        n = 0
+        affected = 0
+        unaffected = 0
         for m in self.image_encoder.modules():
             if type(m) in [QConvLayer, QConvLayerV2]:
                 if m.quant:
-                    n = n + m.parameter_count()
-        return n
+                    affected = affected + m.parameter_count()
+                else:
+                    unaffected = unaffected + m.parameter_count()
+        return affected, unaffected
 
 
 class EfficientViTSamPredictor:

@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import torch
 from configs.quant_backbones_zoo import REGISTERED_BACKBONE_VERSIONS
+from efficientvit.models.ptq.bit_type import BitType
 from lvis import LVIS
 from PIL import Image
 from pycocotools import mask as mask_util
@@ -139,7 +140,6 @@ def calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank):
     for i, data in enumerate(tqdm(calib_dataloader, disable=local_rank != 0)):  # for each batch of images
         if i == len(calib_dataloader) - 1 or i == args.limit_iterations - 1:    # The lenght of the dataloader is dynamicas data is split over GPUs. zero-based enumeration              
             toggle_operation(efficientvit_sam, 'last_calibrate', 'on', args.backbone_version)          # if second to last batch, set last_calibrate = true for all relevant modules
-       
         if i == args.limit_iterations:
             break
         data = data[0]                                                          # fetch the images?
@@ -154,10 +154,10 @@ def calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank):
 
     toggle_operation(efficientvit_sam, 'calibrate', 'off', args.backbone_version)
     toggle_operation(efficientvit_sam, 'last_calibrate', 'off', args.backbone_version)
-    
+
 
 def calibrate_run_box_from_detector(efficientvit_sam, calib_dataloader, args, local_rank):
-    raise NotImplementedError()
+    raise NotImplementedError()    
 
 # Given a bounding box, let the model produce a mask and calculate meanIoU for each mask
 def run_box(efficientvit_sam, dataloader, local_rank):
@@ -166,6 +166,8 @@ def run_box(efficientvit_sam, dataloader, local_rank):
 
     output = []
     for i, data in enumerate(tqdm(dataloader, disable=local_rank != 0)):        # for each batch of images
+        if i == 10:
+            break
         data = data[0]                                                          # fetch the images?
         sam_image = np.array(Image.open(data["image_path"]).convert("RGB"))     # convert ot RGB image
         predictor.set_image(sam_image)                                          # send image to predictor
@@ -263,9 +265,11 @@ def run_box_from_detector(efficientvit_sam, dataloader, local_rank):
     return merged_outs
 
 
-def evaluate(results, prompt_type, dataset, annotation_json_file=None):
+def evaluate_to_wandb(results, prompt_type, dataset, annotation_json_file=None):
     if prompt_type == "point" or prompt_type == "box":
         print(", ".join([f"{key}={val:.3f}" for key, val in get_iou_metric(results).items()]))
+        wandb.log(get_iou_metric(results=results))
+        wandb.log(calculate_savings(efficientvit_sam))   
     elif prompt_type == "box_from_detector":
         iou_type = "segm"
         if dataset == "coco":
@@ -278,21 +282,32 @@ def evaluate(results, prompt_type, dataset, annotation_json_file=None):
         raise NotImplementedError()
 
 
-def toggle_operation(efficientvit_sam, operation, state, backbone_version='0', suppress_print=True):
+def toggle_operation(efficientvit_sam, operation, state, backbone_version='FP32_baseline', suppress_print=True):
     printout=(local_rank==0 and suppress_print is False)
     if state not in ['on', 'off']:
         raise ValueError("State must be either 'on' or 'off'")
-    if backbone_version == '0':
-        getattr(efficientvit_sam, f'toggle_{operation}_{state}')()
-    elif backbone_version in REGISTERED_BACKBONE_VERSIONS:
+    if backbone_version in REGISTERED_BACKBONE_VERSIONS:
         getattr(efficientvit_sam, f'toggle_selective_{operation}_{state}')(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
     else:
         raise NotImplementedError("Backbone version not yet implemented")
 
+def calculate_savings(efficientvit_sam):
+    # calculates the theorethical savings from the applied quantization. Assumes from FP32 to INT8
+    affected, unaffected = efficientvit_sam.get_number_of_quantized_params() #number of weights
+    total = affected + unaffected
+    bytes_saved = 3*affected
+    megabytes_saved = 3*affected/1024/1024
+    model_size_mb_original = 4*total/1024/1024 # 4 bytes = 32 bits
+    model_size_mb_quantized = model_size_mb_original - megabytes_saved
+    percentage_quantized = 100*(affected/total)
+    print(f"quantized {affected} params to int8, \nsaving {bytes_saved} bytes = {megabytes_saved:.2f} Mb. \n{unaffected} params were unaffected. \n{percentage_quantized:.4f}% reduction.")
+    return {
+        "megabytes_saved": megabytes_saved,
+        "percentage_quantized": percentage_quantized,
+        "model_size_original": model_size_mb_original,
+        "model_size_quantized": model_size_mb_quantized,
+    }
 
-def get_number_of_quantized_params(efficientvit_sam):
-    n = efficientvit_sam.get_number_of_quantized_params()
-    print(f"quantized {n} params to int8, saving {3*n} bytes = {3*n/1024/1024} Mb")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -309,8 +324,6 @@ if __name__ == "__main__":
 
     parser.add_argument('--single_gpu', action='store_true', help="Force the use of a single gpu, might help in troubleshooting quantization")
     parser.add_argument('--suppress_print', action="store_true", help="suppresses debugging printouts")
-    parser.add_argument('--export_dataframe', action="store_true")
-    parser.add_argument('--script_name', type=str)
     parser.add_argument('--limit_iterations', type=int, default=-1)
     parser.add_argument('--print_torchinfo', action='store_true')
 
@@ -349,14 +362,31 @@ if __name__ == "__main__":
     torch.cuda.set_device(local_rank)
     
     config = Config(args) # quantization configuration
-    wandb_config = {**vars(args), **vars(config)} #gets both the arguments and the quant config class.
 
-    wandb.init(project="project-1", config = wandb_config)
+    if local_rank == 0:
+        # Replace object attributes with their dictionary representation
+        config_dict = vars(config).copy()
+        for key, value in config_dict.items():
+            if isinstance(value, BitType):
+                config_dict[key] = value.to_dict()
+        
+        wandb_config = {**vars(args), **config_dict} #gets both the arguments and the quant config class.
+        wandb.init(project="project-1", group="experiment_3d", job_type="eval", config=wandb_config)
+        
+        if args.model == "l0_quant":
+            wandb.log({"model_index": 0})
+        elif args.model == "l1_quant":
+            wandb.log({"model_index": 1})
+        elif args.model == "l2_quant":
+            wandb.log({"model_index": 2})
+        elif args.model == "xl0_quant":
+            wandb.log({"model_index": 3})
+        elif args.model == "xl1_quant":
+            wandb.log({"model_index": 4})
 
     # model creation
     efficientvit_sam = create_sam_model(name=args.model, pretrained=True, weight_url=args.weight_url, config=config)
 
-    # print model info
     if args.print_torchinfo:
         # Use torchinfo.summary to print the model. Depth controls granularity of printout - all params are counted anyhow
         summary(efficientvit_sam.image_encoder, depth=4, col_names = ("output_size", "num_params", "mult_adds"), input_size=(1, 3, 2014, 512))
@@ -368,7 +398,7 @@ if __name__ == "__main__":
     if not args.suppress_print:
         print(f"The dataloader contains {len(dataloader.dataset)} images.")
 
-    # calibration dataset - only needed for weight quantization
+    # calibration dataset - only needed for activation quantization
     if args.quantize:
         calib_dataset = eval_dataset(args.dataset, args.image_root_calibration, args.prompt_type, args.annotation_json_file, args.source_json_file)
         calib_sampler = DistributedSampler(calib_dataset, shuffle=False)
@@ -379,7 +409,7 @@ if __name__ == "__main__":
     # inference + calibration + quantization
     if args.prompt_type == "point":
         if args.quantize:
-            if local_rank == 0 and not args.suppress_print:
+            if not args.suppress_print:
                 print("Calibrating point...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
             toggle_operation(efficientvit_sam, 'quant', 'on', args.backbone_version, args.suppress_print)
@@ -388,17 +418,16 @@ if __name__ == "__main__":
 
     elif args.prompt_type == "box":
         if args.quantize:
-            if local_rank == 0 and not args.suppress_print:
+            if not args.suppress_print:
                 print("Calibrating box...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
             toggle_operation(efficientvit_sam, 'quant', 'on', args.backbone_version, args.suppress_print)
-            get_number_of_quantized_params(efficientvit_sam)
 
         results = run_box(efficientvit_sam, dataloader, local_rank)
 
     elif args.prompt_type == "box_from_detector":
         if args.quantize:
-            if local_rank == 0 and not args.suppress_print:
+            if not args.suppress_print:
                 print("Calibrating box_from_detector...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
             toggle_operation(efficientvit_sam, args.backbone_version, args.suppress_print)
@@ -411,7 +440,5 @@ if __name__ == "__main__":
     # evaluation - only done my the master process, not other parallell processes
     if local_rank == 0:
         print("")
-        evaluate(results, args.prompt_type, args.dataset, args.annotation_json_file)
-        print(", ".join([f"{key}={val:.3f}" for key, val in get_iou_metric(results).items()]))
-        wandb.log(get_iou_metric(results=results))
+        evaluate_to_wandb(results, args.prompt_type, args.dataset, args.annotation_json_file)
 

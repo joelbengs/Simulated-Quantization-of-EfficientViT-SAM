@@ -41,6 +41,15 @@ class BitType:
             self.name += 'int'
         self.name += '{}'.format(self.bits)
 
+    def to_dict(self):
+        return {
+            'bits': self.bits,
+            'signed': self.signed,
+            'name': self.name,
+            'upper_bound': self.upper_bound,
+            'lower_bound': self.lower_bound,
+            'range': self.range
+        }
 
 BIT_TYPE_LIST = [
     BitType(4, False, 'uint4'),
