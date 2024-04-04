@@ -1,9 +1,18 @@
 # Backbone architectures for quantization experimentation
+#for key in REGISTERED_BACKBONE_VERSIONS.keys(): print(key)
 
-'''    # Assuming REGISTERED_BACKBONE_VERSIONS is your dictionary
-    for key in REGISTERED_BACKBONE_VERSIONS.keys():
-        print(key)
-'''
+REGISTERED_BACKBONE_DESCRIPTIONS = {
+    "baseline": "baselines of the backbone, everything in FP32 or everything quantized",
+    "1": "Early trial experiments",
+    "2": "Early trial experiments",
+    "3": "Aggersive quantization - Lift one STAGE back to FP32 at a time.",
+    "4": "Aggresive quantization - Lift one BLOCK TYPE back to FP32 at a time.",
+    "5": "Aggresive quantization - SPARE one special thing back to FP32 at a time.",
+    "6": "Soft quantization - one STAGE at a time",
+    "7": "Soft quantization - one STAGE at a time, plus save bottleneck for that stage",
+    "8": "Soft quantization - one BLOCK TYPE at a time",
+    "9": "Soft quantization - one BLOCK TYPE at a time, plus save bottleneck if in those block types",
+}
 
 REGISTERED_BACKBONE_VERSIONS = {
     # BASELINES
@@ -24,7 +33,7 @@ REGISTERED_BACKBONE_VERSIONS = {
         'spare_attention_projection': False,
     },
 
-    # FAMILY 3 - to test extreme quantization - Lift one STAGE back to FP32 at a time. Should be compared with the INT8_baseline
+    ### Family ###
     '3_q_all_but_stage0': {
         'stages': ["unknown", "stage1", "stage2", "stage3", "stage4", "stage5", "neck"],
         'block_names': ["independent", "res", "mb", "fmb", "att", "att@3", "att@5", "dag"],
@@ -83,7 +92,7 @@ REGISTERED_BACKBONE_VERSIONS = {
 
     },
 
-    # Family 4 - to test extreme quantization. Based on quantizing everything and then recover slective block types one at a time
+    ### Family ###
     '4_q_all_but_ResBlocks': {
         'stages': ["unknown", "stage0", "stage1", "stage2", "stage3", "stage4", "stage5", "neck"],
         'block_names': ["independent", "mb", "fmb", "att", "att@3", "att@5", "dag"],
@@ -117,7 +126,7 @@ REGISTERED_BACKBONE_VERSIONS = {
         'spare_attention_projection': False,
     },
 
-     # Family 5 to test extreme quantization - SPARE one special thing back to FP32 at a time. Should be compared with the INT8_baseline
+    ### Family ###
     '5_q_all_but_bottlenecks': {
         'stages': ["unknown", "stage0", "stage1", "stage2", "stage3", "stage4", "stage5", "neck"],
         'block_names': ["independent", "res", "mb", "fmb", "att", "att@3", "att@5", "dag"],
@@ -151,7 +160,7 @@ REGISTERED_BACKBONE_VERSIONS = {
         'spare_attention_projection': True,
     },
 
-    # Family 6 - soft quantization - one STAGE at a time
+    ### Family ###
     '6_q_only_stage0_spare_nothing': {
         'stages': ["stage0"],
         'block_names': ["independent", "res", "mb", "fmb", "att", "att@3", "att@5", "dag"],
@@ -208,8 +217,8 @@ REGISTERED_BACKBONE_VERSIONS = {
         'spare_attention_scaling': False,
         'spare_attention_projection': False,
     },
-    
-     # Family 7 - soft quantization - one STAGE at a time and saved bottleneck for that stage
+
+    ### Family ###
     '7_q_only_stage0_spare_bottlenecks': {
         'stages': ["stage0"],
         'block_names': ["independent", "res", "mb", "fmb", "att", "att@3", "att@5", "dag"],
@@ -267,7 +276,7 @@ REGISTERED_BACKBONE_VERSIONS = {
         'spare_attention_projection': False,
     },
 
-        # Family 8 - soft quantization - one BLOCK TYPE at a time
+    ### Family ###
     '8_q_only_ResBlocks_spare_nothing': {
         'stages': ["unknown", "stage0", "stage1", "stage2", "stage3", "stage4", "stage5", "neck"],
         'block_names': ["res"],
@@ -301,8 +310,7 @@ REGISTERED_BACKBONE_VERSIONS = {
         'spare_attention_projection': False,
     },
     
-
-    # Family 9 - soft quantization - one BLOCK TYPE at a time and save bottleneck if in those block types
+    ### Family ###
     '9_q_only_ResBlocks_spare_bottlenecks': {
         'stages': ["unknown", "stage0", "stage1", "stage2", "stage3", "stage4", "stage5", "neck"],
         'block_names': ["res"],

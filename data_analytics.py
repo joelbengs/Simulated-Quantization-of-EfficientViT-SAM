@@ -3,7 +3,8 @@ import pandas as pd
 import numpy as np
 import pickle
 import os
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
+from configs.quant_backbones_zoo import REGISTERED_BACKBONE_DESCRIPTIONS
 
 def read_pickle_to_dataframe(file_path, file_name) -> pd.DataFrame:
         file_name = os.path.basename(file_name)
@@ -33,6 +34,58 @@ if __name__ == "__main__":
     print("data analytics script is working with the following data:")
     print(selected_data)
 
+    #Add negative noise to XL1 make sure all models are visible in plot
+    #mask = df['model'] == 'xl0_quant'
+    #df.loc[mask,'all'] -= np.random.uniform(0, 2, size=df[mask].shape[0])
+
+    # Rename models to remove _quant ending
+    df['model'] = df['model'].str.replace('_quant', '')
+    df['model'] = df['model'].str.upper()
+
+    df = df[df['model'] != 'L2']
+    df = df[df['model'] != 'XL0']
+
+    # Group the dataframe by 'backbone_version'
+    grouped = df.groupby('backbone_version')
+    markers = ['o', 'v', '^', '<', '>', 's', 'p', '*', 'h', 'H', 'D', 'd', 'P', 'X']
+
+
+    for n in ("3","4","5", "6", "7", "8","9"):
+        fig, ax = plt.subplots()
+        #iterate over the groups
+        for i, (name, group) in enumerate(grouped):
+            if name.startswith(n):
+                # Plot performance against base model for each backbone
+                linestyle='dotted' if i % 2 == 0 else '--'
+                label=f"{name}\n(values: {' '.join([str(round(val, 1)) for val in group['all'].values])})"
+                ax.plot(group['model'], group['all'], label=label, linestyle=linestyle) # + np.random.uniform(0,0,len(group['all']))
+            elif 'baseline' in name:
+                color = 'red' if 'FP32' in name else 'black'
+                label=f"{name}\n(values: {' '.join([str(round(val, 1)) for val in group['all'].values])})"
+                ax.plot(group['model'], group['all'], label=label, linestyle='dotted', marker = 'x', color=color)
+
+        ax.set_xlabel('Base Model')
+        ax.set_ylabel('box prompt "all" score')
+        ax.set_ylim([0,85])
+        
+        ax.set_title(REGISTERED_BACKBONE_DESCRIPTIONS[str(n)])
+        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+
+        plt.suptitle(f'Experiment 4, backbone benchmarking, family {n}')
+        plt.savefig(f'./plots/E4_plot_family_{n}_L2_XL0_removed.png', bbox_inches='tight')
+        plt.close() 
+
+
+    # Get metadata for the textbox
+    '''
+    first_row = df.iloc[0]
+    meta_columns = [col for col in df.columns if col not in selected_columns]     
+    info_dict = {col: first_row[col] for col in meta_columns}
+    info_str = '\n'.join(f'{k}: {v}' for k, v in info_dict.items())
+    # ax.text(0.5, 0.5, info_str, transform=ax.transAxes, fontsize=10, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+
+    '''
+
     # Apend the baselines for plotting - will need to extract them later.
     '''new_data = [
         {'model': 'l0_quant', 'backbone_version': 'FP32 baseline', 'all': 78.509},
@@ -49,49 +102,6 @@ if __name__ == "__main__":
     new_data_df = pd.DataFrame(new_data)
     df = pd.concat([df, new_data_df], ignore_index=True)
 '''
-    # Rename models to remove _quant ending
-    df['model'] = df['model'].str.replace('_quant', '')
-    df['model'] = df['model'].str.upper()
-    # Group the dataframe by 'backbone_version'
-    grouped = df.groupby('backbone_version')
-    markers = ['o', 'v', '^', '<', '>', 's', 'p', '*', 'h', 'H', 'D', 'd', 'P', 'X']
-
-
-    for n in ("3","4","5_q_all", "5_q_only"):
-        fig, ax = plt.subplots()
-        #iterate over the groups
-        for i, (name, group) in enumerate(grouped):
-            if name.startswith(n):
-                # Plot performance against base model for each backbone
-                linestyle='dotted' if i % 2 == 0 else '--'
-                ax.plot(group['model'], group['all'], label=name, linestyle=linestyle) # + np.random.uniform(0,0,len(group['all']))
-            elif 'baseline' in name:
-                color = 'red' if 'FP32' in name else 'black'
-                ax.plot(group['model'], group['all'], label=name, linestyle='dotted', marker = 'x', color=color)
-
-        ax.set_xlabel('Base Model')
-        ax.set_ylabel('box prompt "all" score')
-        ax.set_title(f'Experiment 3V2, backbone benchmarking, family {n}')
-        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-
-        plt.savefig(f'./plots/plot_family_{n}_v2.png', bbox_inches='tight')
-        plt.close() 
-
-
-
-
-
-
-
-    # Get metadata for the textbox
-    '''
-    first_row = df.iloc[0]
-    meta_columns = [col for col in df.columns if col not in selected_columns]     
-    info_dict = {col: first_row[col] for col in meta_columns}
-    info_str = '\n'.join(f'{k}: {v}' for k, v in info_dict.items())
-    # ax.text(0.5, 0.5, info_str, transform=ax.transAxes, fontsize=10, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
-
-    '''
 
     base_model_sizes = {
         'L0': {'Total params': 30728224, 'Total mult-adds (G)': 104.45},
