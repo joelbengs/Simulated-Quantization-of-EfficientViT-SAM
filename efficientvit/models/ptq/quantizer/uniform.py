@@ -19,8 +19,6 @@ class UniformQuantizer(BaseQuantizer):
             raise ValueError("Scale is None after getting quantization params.")
         if self.zero_point is None:
             raise ValueError("Zero point is None after getting quantization params.")
-        #print(f"Parameters updated: S = {self.scale}, S.type = {self.scale.type()}, Z = {self.zero_point}, Z.type = {self.zero_point.type()}")
-
 
     def quant(self, inputs, scale=None, zero_point=None):
         if scale is None:
@@ -35,7 +33,6 @@ class UniformQuantizer(BaseQuantizer):
                                         self.bit_type.upper_bound)
         return outputs
 
-    # Note: you can also dequantize as easy as quant(input, scale, zeropoint).
     def dequantize(self, inputs, scale=None, zero_point=None):
         if scale is None:
             scale = self.scale
@@ -48,5 +45,5 @@ class UniformQuantizer(BaseQuantizer):
         return outputs
     
     # forward() is definined in class BaseQuantizer(nn.Module):
-    # output = self.quant(input)
-    # return self.dequantize(input)
+        # output = self.quant(input)
+        # return self.dequantize(input)

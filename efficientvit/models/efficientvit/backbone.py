@@ -676,10 +676,10 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                 act_func=act_func,              # gelu, None
                 fewer_norm=fewer_norm_list[0],  # False
                 # configs
-                bit_type=config.BIT_TYPE_W,
-                calibration_mode=config.CALIBRATION_MODE_W,
-                observer_str=config.OBSERVER_W,
-                quantizer_str=config.QUANTIZER_W,
+                bit_type=self.config.BIT_TYPE_W,
+                calibration_mode=self.config.CALIBRATION_MODE_W,
+                observer_str=self.config.OBSERVER_W,
+                quantizer_str=self.config.QUANTIZER_W,
                 stage_id="stage1",
                 block_name=block_list[0],        # res, passed to the QConvLayer
                 block_is_bottleneck=False,
@@ -712,10 +712,10 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                 act_func=act_func,
                 fewer_norm=fewer_norm_list[stage_id],   # only true in the last two stages
                 # config
-                bit_type=config.BIT_TYPE_W,
-                calibration_mode=config.CALIBRATION_MODE_W,
-                observer_str=config.OBSERVER_W,
-                quantizer_str=config.QUANTIZER_W,
+                bit_type=self.config.BIT_TYPE_W,
+                calibration_mode=self.config.CALIBRATION_MODE_W,
+                observer_str=self.config.OBSERVER_W,
+                quantizer_str=self.config.QUANTIZER_W,
                 stage_id="stage%d" % stage_id,
                 block_name="mb" if block_list[stage_id] not in ["mb", "fmb"] else block_list[stage_id],
                 block_is_bottleneck=True,
@@ -734,10 +734,10 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                             scales=(3,) if block_list[stage_id] == "att@3" else (5,), # XL-models ONLY use 3scaling, all other only use 5-scaling
                             norm=norm,
                             act_func=act_func,
-                            bit_type=config.BIT_TYPE_W,
-                            calibration_mode=config.CALIBRATION_MODE_W,
-                            observer_str=config.OBSERVER_W,
-                            quantizer_str=config.QUANTIZER_W,
+                            bit_type=self.config.BIT_TYPE_W,
+                            calibration_mode=self.config.CALIBRATION_MODE_W,
+                            observer_str=self.config.OBSERVER_W,
+                            quantizer_str=self.config.QUANTIZER_W,
                             stage_id="stage%d" % stage_id,
                             block_name=block_list[stage_id],
                             block_is_bottleneck=False,
@@ -754,10 +754,10 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                         act_func=act_func,
                         fewer_norm=fewer_norm_list[stage_id],      # only true in the last two stages
                         # config
-                        bit_type=config.BIT_TYPE_W,
-                        calibration_mode=config.CALIBRATION_MODE_W,
-                        observer_str=config.OBSERVER_W,
-                        quantizer_str=config.QUANTIZER_W,
+                        bit_type=self.config.BIT_TYPE_W,
+                        calibration_mode=self.config.CALIBRATION_MODE_W,
+                        observer_str=self.config.OBSERVER_W,
+                        quantizer_str=self.config.QUANTIZER_W,
                         stage_id="stage%d" % stage_id,
                         block_name=block_list[stage_id],
                         block_is_bottleneck=False,

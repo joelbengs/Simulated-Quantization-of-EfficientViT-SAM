@@ -671,10 +671,28 @@ class QConvLayer(nn.Module):
         self.conv_is_attention_scaling = conv_is_attention_scaling
         self.conv_is_attention_projection = conv_is_attention_projection
 
-        observer_object = build_observer(self.observer_str, self.module_type, 
-                                       self.bit_type, self.calibration_mode) # in FQ-ViT, this is saved as self.observer for no reason
-        self.quantizer = build_quantizer(self.quantizer_str, self.bit_type,
-                                          observer_object, self.module_type)
+        #observer for convoultions
+        self.weight_observer = build_observer(
+            self.observer_str,
+            self.module_type, 
+            self.bit_type,
+            self.calibration_mode,
+            # kwargs
+            stage_id=self.stage_id,
+            block_name=self.block_name,
+            block_is_bottleneck=self.block_is_bottleneck,
+            block_is_neck=self.block_is_neck,
+            conv_is_attention_qkv=self.conv_is_attention_qkv,
+            conv_is_attention_scaling=self.conv_is_attention_scaling,
+            conv_is_attention_projection=self.conv_is_attention_projection,
+            operation_type='conv_weight'
+            )
+        self.quantizer = build_quantizer(
+            self.quantizer_str,
+            self.bit_type,
+            self.weight_observer,
+            self.module_type,
+            )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # calibrate
@@ -802,11 +820,12 @@ class QConvLayerV2(nn.Conv2d):
             #print("Calibration batch processed in QConv2d")
             if self.last_calibrate:                          # after the last batch, fetch S and Z of the quantizer
                 self.quantizer.update_quantization_params(x) # maybe x is not needed as argument
-                #print("Calibration finished in QConv2d.")
 
         # dropout
         if self.dropout is not None:
             x = self.dropout(x)
+
+
 
         # quantization
         if self.quant:

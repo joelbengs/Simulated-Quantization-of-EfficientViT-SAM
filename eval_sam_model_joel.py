@@ -330,11 +330,17 @@ def create_dataframe(prompt_type, columns, script_name: str) -> pd.DataFrame:
         df = pd.DataFrame(columns=columns)
     return df
 
-def metadata_to_dataframe(dataframe: pd.DataFrame, args, columns) -> pd.DataFrame:
+def metadata_to_dataframe(dataframe: pd.DataFrame, args, config, columns) -> pd.DataFrame:
     row_data = {}
     for column in columns:
         row_data[column] = getattr(args, column)
-    dataframe = pd.concat([dataframe, pd.DataFrame([row_data])], ignore_index=True)
+
+    #overwrites the previous loop if conflicting
+    for key,val in config.to_dict().items():
+        row_data[key] = val
+
+    print("checker of row_data in metadata_to_dataframe", row_data)
+    dataframe = pd.concat(d[dataframe, pd.DataFrame([row_data])], ignore_index=True)
     return dataframe
 
 def save_dataframe_to_file(dataframe: pd.DataFrame, script_name: str) -> None:
@@ -449,13 +455,17 @@ if __name__ == "__main__":
     parser.add_argument("--quantize_A", action="store_true", help="Turn on quantization and calibration for activations")
     parser.add_argument("--quantize_N", action="store_true", help="Turn on quantization and calibration for norms")
 
-    parser.add_argument("--observer_method_W", default="minmax", choices=["minmax", "ema", "omse", "percentile"]) #TODO - implement this
-    parser.add_argument("--observer_method_A", default="minmax", choices=["minmax", "ema", "omse", "percentile"]) #TODO - implement this
-    parser.add_argument("--observer_method_N", default="minmax", choices=["minmax", "ema", "omse", "percentile"]) #TODO - implement this
+    parser.add_argument("--observer_method_W", choices=["minmax", "ema", "omse", "percentile"]) #TODO - implement this
+    parser.add_argument("--observer_method_A", choices=["minmax", "ema", "omse", "percentile"]) #TODO - implement this
+    parser.add_argument("--observer_method_N", choices=["minmax", "ema", "omse", "percentile"]) #TODO - implement this
 
-    parser.add_argument("--quantize_method_W", default="uniform", choices=["uniform", "log2"]) #TODO - implement this
-    parser.add_argument("--quantize_method_A", default="uniform", choices=["uniform", "log2"]) #TODO - implement this
-    parser.add_argument("--quantize_method_N", default="uniform", choices=["uniform", "log2"]) #TODO - implement this
+    parser.add_argument("--quantize_method_W", choices=["uniform", "log2"]) #TODO - implement this
+    parser.add_argument("--quantize_method_A", choices=["uniform", "log2"]) #TODO - implement this
+    parser.add_argument("--quantize_method_N", choices=["uniform", "log2"]) #TODO - implement this
+
+    parser.add_argument("--calibration_mode_W", choices=["layer_wise", "channel_wise"]) #TODO - implement this
+    parser.add_argument("--calibration_mode_A", choices=["layer_wise", "channel_wise"]) #TODO - implement this
+    parser.add_argument("--calibration_mode_N", choices=["layer_wise", "channel_wise"]) #TODO - implement this
 
     parser.add_argument("--backbone_version", type=str, default='FP32_baseline')
 
@@ -464,10 +474,6 @@ if __name__ == "__main__":
     args.quantize = args.quantize_W or args.quantize_A or args.quantize_N
     config = Config(args) # quantization configuration
 
-    # Override the built-in print function so only master process prints
-    def print(*args, **kwargs):
-        if local_rank == 0:
-            __builtins__.print(*args, **kwargs)
     
     # colums for dataframes when running scripts.
     columns = [
@@ -500,9 +506,15 @@ if __name__ == "__main__":
         if local_rank == 0 and not args.suppress_print:
             print(f"Using {torch.distributed.get_world_size()} GPUs")
     torch.cuda.set_device(local_rank)
-    
+
+    # Override the built-in print function so only mast
+
     # model creation
     efficientvit_sam = create_sam_model(name=args.model, pretrained=True, weight_url=args.weight_url, config=config)
+
+    # statistics
+    # efficientvit_sam.print_named_parameters()
+
 
     if args.print_torchinfo and local_rank == 0:
         # Use torchinfo.summary to print the model. Depth controls granularity of printout - all params are counted anyhow
@@ -544,6 +556,8 @@ if __name__ == "__main__":
                 print("Calibrating box...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
             toggle_operation(efficientvit_sam, 'quant', 'on', args.backbone_version, args.suppress_print)
+            if local_rank == 0:
+                efficientvit_sam.print_some_statistics()
 
         results = run_box(efficientvit_sam, dataloader, local_rank)
 
@@ -563,7 +577,7 @@ if __name__ == "__main__":
     if local_rank == 0:
         if args.export_dataframe:
             df = create_dataframe(args.prompt_type, columns.copy(), args.script_name)
-            df = metadata_to_dataframe(df, args, columns)
+            df = metadata_to_dataframe(df, args, config, columns)
             df = evaluate_to_dataframe(df, results, args.prompt_type, args.dataset, args.annotation_json_file, args=args)
             print("New row added to results: \n", df.tail(1))
             save_dataframe_to_file(df, args.script_name)

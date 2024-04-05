@@ -496,6 +496,78 @@ class EfficientViTSam(nn.Module):
                     unaffected = unaffected + m.parameter_count()
         return affected, unaffected
 
+    def print_named_parameters(self):
+        for name, param in self.image_encoder.named_parameters():
+            print("param name:", name)
+            print("param.size():", param.size())
+
+
+    def print_some_statistics(self):
+        counter = 0
+        for m in self.image_encoder.modules():
+            if type(m) in [QConvLayer]:
+                observer = m.weight_observer
+                if observer.stage_id == 'stage2':
+                    counter += 1
+                    if counter == 2:                    
+                        print(f"Observer with info: {observer.stage_id}, {observer.block_name}, {observer.operation_type}")
+                        tensor = observer.stored_weight_tensor
+                        tensor = tensor.detach()
+                        tensor = tensor.cpu() #torch.histogram is not implemented on CUDA backend.
+                        # tensor = tensor.cuda()
+                        
+                        '''The shape of the weight tensor corresponds to (out_channels, in_channels, kernel_height, kernel_width).'''
+
+
+                        print(f"stored weight tensor: {tensor.size()}"
+                        f"Mean: {tensor.mean().item()}\n"
+                        f"Std: {tensor.std().item()}\n"
+                        f"Min: {tensor.min().item()}\n"
+                        f"Max: {tensor.max().item()}")
+
+                        import matplotlib.pyplot as plt
+
+                        hist_values, bin_edges = torch.histogram(tensor, density=True)
+
+                        plt.bar(bin_edges[:-1], hist_values, width = 0.1)
+                        plt.title(f"Weights of {observer.stage_id}, {observer.block_name}, {observer.operation_type}, second block \n all values of tensor with shape {tensor.size()}")
+                       
+                        plt.axvline(tensor.min().item(), color='r', linestyle='dotted', linewidth=1)
+                        plt.axvline(tensor.max().item(), color='g', linestyle='dotted', linewidth=1)
+                        plt.axvline(torch.quantile(tensor, 0.5).item(), color='b', linestyle='dotted', linewidth=1)  # 50th percentile (median)
+                        plt.xlabel("Weight value")
+                        plt.ylabel("Normalized number of occurances")
+
+                        plt.savefig(f'./plots/My_first_histogram.png')
+                        plt.close()
+
+                         # Reshape tensor to 2D, with second dimension being the flattened kernel
+                        tensor_2d = tensor.view(tensor.shape[0], -1)
+                        # Select the first 12 channels
+                        tensor_2d = tensor_2d[:12]
+
+                        # Create boxplot
+                        plt.boxplot(tensor_2d, vert=True, patch_artist=True)
+                        plt.title(f"Weights of 12 channels of {observer.stage_id}, {observer.block_name}, {observer.operation_type}, second block \n all values of tensor with shape {tensor.size()}")
+                        plt.xlabel("Channel number (output)")
+                        plt.ylabel("Weight value")
+
+                        #plt.xlim(0, tensor_2d.shape[0] + 5)  # adjust '5' as needed
+
+                        #plt.text(tensor_2d.shape[0] + 1, tensor_2d.min(), 'Box: Interquartile Range (IQR)\nLine in Box: Median\nWhiskers: Range within 1.5*IQR\nCircles: Outliers', verticalalignment='bottom')
+
+                        plt.savefig(f'./plots/My_first_boxplot.png')
+                        plt.close()
+
+        '''
+        Observer with info: stage2, fmb, conv_weight
+        stored weight tensor: torch.Size([1024, 64, 3, 3])
+        Observer with info: stage2, fmb, conv_weight
+        stored weight tensor: torch.Size([128, 1024, 1, 1])
+        Observer with info: stage2, fmb, conv_weight
+        stored weight tensor: torch.Size([512, 128, 3, 3])
+        Observer with info: stage2, fmb, conv_weight
+        stored weight tensor: torch.Size([128, 512, 1, 1])'''
 
 class EfficientViTSamPredictor:
     def __init__(self, sam_model: EfficientViTSam) -> None:
