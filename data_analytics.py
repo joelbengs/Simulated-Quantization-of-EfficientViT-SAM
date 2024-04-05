@@ -76,6 +76,40 @@ if __name__ == "__main__":
         plt.close() 
 
 
+    # MODEL SIZE PLOT
+
+
+    df = df[df['model'] != 'L1']
+    grouped = df.groupby('backbone_version')
+
+    for n in ("3","4","5", "6", "7", "8","9"):
+        fig, ax = plt.subplots()
+        #iterate over the groups
+        for i, (name, group) in enumerate(grouped):
+            if name.startswith(n):
+                # Plot performance against base model for each backbone
+                linestyle='dotted'
+                label=f"{name}\n(values: {' '.join([str(round(val, 1)) for val in group['all'].values])})"
+                ax.plot(group['model_size_mb_quantized'], group['all'], label=label, linestyle=linestyle, marker = 'o') # + np.random.uniform(0,0,len(group['all']))
+            elif 'baseline' in name:
+                color = 'red' if 'FP32' in name else 'black'
+                label=f"{name}\n(values: {' '.join([str(round(val, 1)) for val in group['all'].values])})"
+                ax.plot(group['model_size_mb_quantized'], group['all'], label=label, linestyle='-.', marker = 'x', color=color)
+
+        ax.set_xlabel('theorethical model size in megabytes (lower is better)\n Left datapoint is LO as base model, right datapoint is XL0')
+        ax.set_ylabel('box prompt "all" score (higher is better)')
+        ax.set_ylim([40,85])
+        
+        ax.set_title(REGISTERED_BACKBONE_DESCRIPTIONS[str(n)])
+        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+
+        plt.suptitle(f'Family {n}, L0 and XL1 only')
+        plt.subplots_adjust(top=0.85)
+        plt.savefig(f'./plots/E4_sizeplot_family_{n}.png', bbox_inches='tight')
+        plt.close() 
+
+
+
     # Get metadata for the textbox
     '''
     first_row = df.iloc[0]
