@@ -580,7 +580,7 @@ if __name__ == "__main__":
                 print("Calibrating box...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
             toggle_operation(efficientvit_sam, 'quant', 'on', args.backbone_version, args.suppress_print)
-        efficientvit_sam.plot_distributions_of_image_encoder()
+        #efficientvit_sam.plot_distributions_of_image_encoder()
         results = run_box(efficientvit_sam, dataloader, local_rank)
 
 
