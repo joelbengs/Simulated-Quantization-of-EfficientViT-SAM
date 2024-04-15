@@ -167,8 +167,6 @@ L0:neck:6:0
 L0:neck:6:1
 L0:neck:7:0
 )
-backbone_versions=(INT8_baseline)
-
 
 echo "--------- STARTING SCRIPT ---------}"
 for bbv in "${backbone_versions[@]}"

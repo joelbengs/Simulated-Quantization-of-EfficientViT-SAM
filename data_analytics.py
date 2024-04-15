@@ -34,11 +34,38 @@ if __name__ == "__main__":
     print("data analytics script is working with the following data:")
     print(selected_data)
 
+    ################################
+    ###       Experiment 5       ###
+    ################################
+
+    # Rename models to remove _quant ending
+    df['model'] = df['model'].str.replace('_quant', '')
+    df['model'] = df['model'].str.upper()
+    df['backbone_version'] = df['backbone_version'].str.replace('L0:', '')
+
+    fig, ax = plt.subplots()
+    ax.plot(df['backbone_version'], df['all'])
+
+    ax.set_xlabel('layer quantized')
+    ax.set_ylabel('box prompt "all" score')
+    ax.set_ylim([45,85])
+    ax.xticks(rotation=90)
+    
+    plt.suptitle(f'Experiment 5, layer-wise analysis')
+    plt.savefig(f'./plots/E5.png', bbox_inches='tight')
+    plt.close() 
+
+
+    ################################
+    ###       Experiment 4       ###
+    ################################
+    '''
     #Add negative noise to XL1 make sure all models are visible in plot
     #mask = df['model'] == 'xl0_quant'
     #df.loc[mask,'all'] -= np.random.uniform(0, 2, size=df[mask].shape[0])
 
     # Rename models to remove _quant ending
+     
     df['model'] = df['model'].str.replace('_quant', '')
     df['model'] = df['model'].str.upper()
 
@@ -48,7 +75,6 @@ if __name__ == "__main__":
     # Group the dataframe by 'backbone_version'
     grouped = df.groupby('backbone_version')
     markers = ['o', 'v', '^', '<', '>', 's', 'p', '*', 'h', 'H', 'D', 'd', 'P', 'X']
-
 
     for n in ("3","4","5", "6", "7", "8","9"):
         fig, ax = plt.subplots()
@@ -77,8 +103,6 @@ if __name__ == "__main__":
 
 
     # MODEL SIZE PLOT
-
-
     df = df[df['model'] != 'L1']
     grouped = df.groupby('backbone_version')
 
@@ -108,7 +132,7 @@ if __name__ == "__main__":
         plt.savefig(f'./plots/E4_sizeplot_family_{n}.png', bbox_inches='tight')
         plt.close() 
 
-
+    '''
 
     # Get metadata for the textbox
     '''
