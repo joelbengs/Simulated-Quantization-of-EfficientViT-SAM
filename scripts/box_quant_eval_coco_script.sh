@@ -76,6 +76,100 @@ backbone_versions=(
 "INT8_baseline"
 )
 
+backbone_versions=(
+L0:stage0:0:x
+L0:stage0:1:x
+L0:stage1:0:x
+L0:stage1:1:x
+L0:stage2:0:x
+L0:stage2:1:x
+L0:stage3:0:x
+L0:stage3:1:x
+L0:stage3:2:x
+L0:stage3:3:x
+L0:stage3:4:x
+L0:stage4:0:x
+L0:stage4:1:x
+L0:stage4:2:x
+L0:stage4:3:x
+L0:stage4:4:x
+L0:neck:0:x
+L0:neck:1:x
+L0:neck:2:x
+L0:neck:3:x
+L0:neck:4:x
+L0:neck:5:x
+L0:neck:6:x
+L0:neck:7:x
+L0:stage0:0:0
+L0:stage0:1:0
+L0:stage0:1:1
+L0:stage1:0:0
+L0:stage1:0:1
+L0:stage1:1:0
+L0:stage1:1:1
+L0:stage2:0:0
+L0:stage2:0:1
+L0:stage2:1:0
+L0:stage2:1:1
+L0:stage3:0:0
+L0:stage3:0:1
+L0:stage3:0:2
+L0:stage3:1:0
+L0:stage3:1:1
+L0:stage3:1:2
+L0:stage3:2:0
+L0:stage3:2:1
+L0:stage3:2:2
+L0:stage3:3:0
+L0:stage3:3:1
+L0:stage3:3:2
+L0:stage3:4:0
+L0:stage3:4:1
+L0:stage3:4:2
+L0:stage4:0:0
+L0:stage4:0:1
+L0:stage4:0:2
+L0:stage4:1:0
+L0:stage4:1:1
+L0:stage4:1:2
+L0:stage4:1:3
+L0:stage4:1:4
+L0:stage4:1:5
+L0:stage4:2:0
+L0:stage4:2:1
+L0:stage4:2:2
+L0:stage4:2:3
+L0:stage4:2:4
+L0:stage4:2:5
+L0:stage4:3:0
+L0:stage4:3:1
+L0:stage4:3:2
+L0:stage4:3:3
+L0:stage4:3:4
+L0:stage4:3:5
+L0:stage4:4:0
+L0:stage4:4:1
+L0:stage4:4:2
+L0:stage4:4:3
+L0:stage4:4:4
+L0:stage4:4:5
+L0:neck:0:0
+L0:neck:1:0
+L0:neck:2:0
+L0:neck:3:0
+L0:neck:3:1
+L0:neck:4:0
+L0:neck:4:1
+L0:neck:5:0
+L0:neck:5:1
+L0:neck:6:0
+L0:neck:6:1
+L0:neck:7:0
+)
+backbone_versions=(INT8_baseline)
+
+
 echo "--------- STARTING SCRIPT ---------}"
 for bbv in "${backbone_versions[@]}"
 do
@@ -94,8 +188,8 @@ do
     --backbone_version $bbv \
     --limit_iterations 3 \
     --quantize_W \
+    --export_dataframe \
     --suppress_print \
-    --print_torchinfo \
     --script_name $(basename $0 .sh) # removes the .sh extension and the directory scripts/
     # --quantize_method_W $qmw \
     # --export_dataframe \

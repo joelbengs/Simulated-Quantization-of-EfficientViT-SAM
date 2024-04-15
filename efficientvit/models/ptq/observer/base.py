@@ -12,7 +12,8 @@ class BaseObserver:
         # arguments for statistical quantization analysis
         stage_id=None,
         block_name=None,
-        position_id=None,
+        block_position=None,
+        layer_position=None,
         conv_is_attention_qkv=None,
         conv_is_attention_scaling=None,
         conv_is_attention_projection=None,
@@ -30,7 +31,8 @@ class BaseObserver:
 
         self.stage_id = stage_id
         self.block_name = block_name
-        self.position_id = position_id
+        self.block_position = block_position
+        self.layer_position = layer_position
         self.block_is_bottleneck=block_is_bottleneck
         self.block_is_neck=block_is_neck
         self.conv_is_attention_qkv=conv_is_attention_qkv
@@ -62,8 +64,9 @@ class BaseObserver:
     def get_quantization_params(self, *args, **kwargs):
         raise NotImplementedError
 
+    # TODO: Verify this code
     def store_tensor(self, tensor: torch.tensor):
         #if self.operation_type == 'conv_weight'
         self.stored_weight_tensor = tensor
         #else:
-        #    raise NotImplementedError
+        #    raise NotImplementedError 

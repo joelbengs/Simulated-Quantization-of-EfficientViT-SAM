@@ -16,7 +16,7 @@ from efficientvit.models.nn import (
     ResBlock,
     ResidualBlock,
     ## quantized modules ##
-       ## Quantized ops ##
+    ## Quantized ops ##
     QConvLayer,
     QDSConv,
     QMBConv,
@@ -655,12 +655,21 @@ class EfficientViTLargeBackboneQuant(nn.Module):
 
         # First Convolution - Now always unquantized!
         stage0 = [
-            ConvLayer(
+            QConvLayer(
                 in_channels=3,              # RGB input
                 out_channels=width_list[0], # width_list=[16, _, _, _, _] --> 16 kernels
                 stride=2,                   # Stride 2
                 norm=norm,
                 act_func=act_func,
+                 # configs
+                bit_type=self.config.BIT_TYPE_W,
+                calibration_mode=self.config.CALIBRATION_MODE_W,
+                observer_str=self.config.OBSERVER_W,
+                quantizer_str=self.config.QUANTIZER_W,
+                stage_id="stage0",
+                block_position=0,            # block position within the stage
+                block_name='independent',    # the first layer is not part of any block
+                block_is_bottleneck=True,
             )
         ]
 
@@ -680,8 +689,8 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                 calibration_mode=self.config.CALIBRATION_MODE_W,
                 observer_str=self.config.OBSERVER_W,
                 quantizer_str=self.config.QUANTIZER_W,
-                stage_id="stage1",
-                block_position=i,
+                stage_id="stage0",
+                block_position=i+1,              # block position within the stage
                 block_name=block_list[0],        # res, passed to the QConvLayer
                 block_is_bottleneck=False,
             )
@@ -718,6 +727,7 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                 observer_str=self.config.OBSERVER_W,
                 quantizer_str=self.config.QUANTIZER_W,
                 stage_id="stage%d" % stage_id,
+                block_position=0,
                 block_name="mb" if block_list[stage_id] not in ["mb", "fmb"] else block_list[stage_id],
                 block_is_bottleneck=True,
             )
@@ -725,7 +735,7 @@ class EfficientViTLargeBackboneQuant(nn.Module):
             in_channels = w
 
             # Build many more blocks, either attention or convolutions
-            for _ in range(d):
+            for i in range(d):
                 if block_list[stage_id].startswith("att"):
                     stage.append(
                         QEfficientViTBlock(
@@ -740,6 +750,7 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                             observer_str=self.config.OBSERVER_W,
                             quantizer_str=self.config.QUANTIZER_W,
                             stage_id="stage%d" % stage_id,
+                            block_position=i+1,
                             block_name=block_list[stage_id],
                             block_is_bottleneck=False,
                         )
@@ -760,6 +771,7 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                         observer_str=self.config.OBSERVER_W,
                         quantizer_str=self.config.QUANTIZER_W,
                         stage_id="stage%d" % stage_id,
+                        block_position=i+1,
                         block_name=block_list[stage_id],
                         block_is_bottleneck=False,
                     )

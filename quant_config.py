@@ -6,8 +6,6 @@ class Config:
 
     def __init__(self, args):
 
-        self.BIT_TYPE = BIT_TYPE_DICT['int8'] # default
-
         self.BIT_TYPE_W = BIT_TYPE_DICT['int8']
         self.BIT_TYPE_A = BIT_TYPE_DICT['uint8']
         self.BIT_TYPE_N = BIT_TYPE_DICT['int8']

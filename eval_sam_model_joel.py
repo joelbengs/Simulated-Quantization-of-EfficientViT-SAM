@@ -12,6 +12,7 @@ import pandas as pd
 import torch
 from configs.quant_backbones_zoo import REGISTERED_BACKBONE_VERSIONS
 from configs.quant_backbones_zoo import SIMPLE_REGISTERED_BACKBONE_VERSIONS
+from efficientvit.models.ptq.bit_type import BitType
 from lvis import LVIS
 from PIL import Image
 from pycocotools import mask as mask_util
@@ -20,6 +21,7 @@ from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 from torchinfo import summary
+import pprint
 
 from efficientvit.models.efficientvit.sam import EfficientViTSamPredictor
 from efficientvit.sam_model_zoo import create_sam_model
@@ -333,15 +335,27 @@ def create_dataframe(prompt_type, columns, script_name: str) -> pd.DataFrame:
 
 def metadata_to_dataframe(dataframe: pd.DataFrame, args, config, columns) -> pd.DataFrame:
     row_data = {}
+    # save metadata from args
     for column in columns:
         row_data[column] = getattr(args, column)
 
-    #overwrites the previous loop if conflicting
-    for key,val in config.to_dict().items():
+    # fetch the information in the BitType objects, instead of just object references
+    config_as_dict = vars(config).copy()
+    for key, value in config_as_dict.items():
+        if isinstance(value, BitType):
+            config_as_dict[key] = value.to_dict()
+
+    # save metadata from quantconfig. overwrites the previous loop if conflicting
+    for key,val in config_as_dict.items():
         row_data[key] = val
 
-    print("checker of row_data in metadata_to_dataframe", row_data)
-    dataframe = pd.concat(d[dataframe, pd.DataFrame([row_data])], ignore_index=True)
+    # print to terminal for error checking
+    print("checker of row_data in metadata_to_dataframe")
+    for key in row_data.keys():
+        print(key, row_data[key])
+
+    # concatenate row_data to existing dataframe
+    dataframe = pd.concat([dataframe, pd.DataFrame([row_data])], ignore_index=True)
     return dataframe
 
 def save_dataframe_to_file(dataframe: pd.DataFrame, script_name: str) -> None:
@@ -417,6 +431,7 @@ def quantize_off(efficientvit_sam, backbone_version='0', suppress_print=False):
     else:
         raise NotImplementedError("Backbone version not yet implemented")
 
+
 def calculate_savings(efficientvit_sam):
     # calculates the theorethical savings from the applied quantization. Assumes from FP32 to INT8
     affected, unaffected = efficientvit_sam.get_number_of_quantized_params() #number of weights
@@ -426,13 +441,16 @@ def calculate_savings(efficientvit_sam):
     model_size_mb_original = 4*total/1024/1024 # 4 bytes = 32 bits
     model_size_mb_quantized = model_size_mb_original - megabytes_saved
     percentage_quantized = 100*(affected/total)
-    print(f"quantized {affected} params to int8, \nsaving {bytes_saved} bytes = {megabytes_saved:.2f} Mb. \n{unaffected} params were unaffected. \n{percentage_quantized:.4f}% reduction.")
+    print(f"quantized {affected} params to int8, \nsaving {bytes_saved} bytes = {megabytes_saved:.4f} Mb. \n{unaffected} params were unaffected. \n{percentage_quantized:.4f}% reduction.")
     return {
+        "number of quantized params": affected,
+        "percentage_of_params_quantized": percentage_quantized,
+        "bytes_saved": bytes_saved,
         "megabytes_saved": megabytes_saved,
-        "percentage_quantized": percentage_quantized,
         "model_size_mb_original": model_size_mb_original,
         "model_size_mb_quantized": model_size_mb_quantized,
     }
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -478,7 +496,6 @@ if __name__ == "__main__":
     args.quantize = args.quantize_W or args.quantize_A or args.quantize_N
     config = Config(args) # quantization configuration
 
-    
     # colums for dataframes when running scripts.
     columns = [
         "model",
@@ -511,14 +528,16 @@ if __name__ == "__main__":
             print(f"Using {torch.distributed.get_world_size()} GPUs")
     torch.cuda.set_device(local_rank)
 
-    # Override the built-in print function so only master prints
+    # Override the built-in print function so only master process prints
+    def print(*args, **kwargs):
+        if local_rank == 0:
+            __builtins__.print(*args, **kwargs)
 
     # model creation
     efficientvit_sam = create_sam_model(name=args.model, pretrained=True, weight_url=args.weight_url, config=config)
 
     # statistics
     # efficientvit_sam.print_named_parameters()
-
 
     if args.print_torchinfo and local_rank == 0:
         # Use torchinfo.summary to print the model. Depth controls granularity of printout - all params are counted anyhow
@@ -544,6 +563,8 @@ if __name__ == "__main__":
         if not args.suppress_print:
             print(f"The calibration dataloader contains {len(calib_dataloader.dataset)} images.")
 
+
+
     # inference + calibration + quantization
     if args.prompt_type == "point":
         if args.quantize:
@@ -551,7 +572,6 @@ if __name__ == "__main__":
                 print("Calibrating point...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
             quantize_on(efficientvit_sam, args.backbone_version, args.suppress_print)
-
         results = run_point(efficientvit_sam, dataloader, args.num_click, local_rank)
 
     elif args.prompt_type == "box":
@@ -560,10 +580,9 @@ if __name__ == "__main__":
                 print("Calibrating box...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
             toggle_operation(efficientvit_sam, 'quant', 'on', args.backbone_version, args.suppress_print)
-            if local_rank == 0:
-                efficientvit_sam.print_some_statistics()
-
+        efficientvit_sam.plot_distributions_of_image_encoder()
         results = run_box(efficientvit_sam, dataloader, local_rank)
+
 
     elif args.prompt_type == "box_from_detector":
         if args.quantize:
@@ -571,11 +590,13 @@ if __name__ == "__main__":
                 print("Calibrating box_from_detector...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
             quantize_on(efficientvit_sam, args.backbone_version, args.suppress_print)
-
         results = run_box_from_detector(efficientvit_sam, dataloader, local_rank)
 
     else:
         raise NotImplementedError()
+
+    #if local_rank == 0:
+        #efficientvit_sam.print_some_statistics()
 
     # evaluation - only done my the master process, not other parallell processes
     if local_rank == 0:
