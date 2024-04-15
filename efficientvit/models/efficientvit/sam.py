@@ -336,7 +336,9 @@ class EfficientViTSamImageEncoder(nn.Module):
             attribute: str,
             attribute_goal_state=True,
             printout=False,
-            stages=["unknown", "stage0", "stage1", "stage2", "stage4", "stage5", "neck"], 
+            stages=["unknown", "stage0", "stage1", "stage2", "stage4", "stage5", "neck"],
+            block_position= [0,1,2,3,4,5,6,7,8,9],
+            layer_position= [0,1,2,3,4,5,6,7,8,9],
             block_names=['independent', "res", "mb", "fmb", "att", "att@3", "att@5"], # could be more scales, must build a general solution for any scale
             spare_bottlenecks=False,
             spare_attention_qkv=False,
@@ -385,6 +387,36 @@ class EfficientViTSamImageEncoder(nn.Module):
             if spare_attention_projection:
                 spared_parts.append('attention projection')
             print(f"Spared parts: {', '.join(spared_parts)}" if spared_parts else "Did not spare any parts.")
+
+    def simple_toggle_selective_attribute(
+            self, 
+            attribute: str,
+            attribute_goal_state=True,
+            printout=False,
+            stages=None, #required
+            block_position=None, #required
+            layer_position=None, #optional
+            ):
+
+        if stages is None or block_position is None:
+            raise NotImplementedError('The backbone format is incompatible with the expected format: stages and block_position must be specified')
+
+        count_all = count_candidates = count_affected = 0
+        for m in self.modules():
+            count_all = count_all + 1
+            if type(m) in [QConvLayer, QConvLayerV2]:
+                count_candidates = count_candidates + 1
+                if m.stage_id in stages:
+                    if m.block_position in block_position:
+                        if m.layer_position in layer_position or layer_position is None:
+                            if hasattr(m, attribute):
+                                setattr(m, attribute, attribute_goal_state)
+                                count_affected = count_affected + 1
+                                if printout: print(f"{attribute} {m.block_name} in {m.stage_id}", f"                module {count_all} of type {type(m)}:")
+                            else:
+                                print(f"Warning: {attribute} does not exist in {m}")
+        if printout:
+            print(f"SUMMARY: Attribute {attribute} to {attribute_goal_state} for {count_affected} out of {count_all} modules. There were {count_candidates} QConvLayers.\nStages = {stages} and block_position = {block_position} and layer_position = {layer_position}.")
 
 
 class EfficientViTSam(nn.Module):
@@ -485,6 +517,26 @@ class EfficientViTSam(nn.Module):
     def toggle_selective_quant_off(self, **kwargs):
         self.image_encoder.toggle_selective_attribute(attribute="quant", attribute_goal_state=False, **kwargs,)
 
+    ### Simple versions: expects other backbone formats
+    def simple_toggle_selective_calibrate_on(self, **kwargs):
+        self.image_encoder.simple_toggle_selective_attribute(attribute="calibrate", **kwargs,)
+        
+    def simple_toggle_selective_calibrate_off(self, **kwargs):
+        self.image_encoder.simple_toggle_selective_attribute(attribute="calibrate", attribute_goal_state=False, **kwargs,)
+
+    def simple_toggle_selective_last_calibrate_on(self, **kwargs):
+        self.image_encoder.simple_toggle_selective_attribute(attribute="last_calibrate", **kwargs,)
+    
+    def simple_toggle_selective_last_calibrate_off(self, **kwargs):
+        self.image_encoder.simple_toggle_selective_attribute(attribute="last_calibrate", attribute_goal_state=False, **kwargs,)
+
+    def simple_toggle_selective_quant_on(self, **kwargs):
+        self.image_encoder.simple_toggle_selective_attribute(attribute="quant", **kwargs,)
+
+    def simple_toggle_selective_quant_off(self, **kwargs):
+        self.image_encoder.simple_toggle_selective_attribute(attribute="quant", attribute_goal_state=False, **kwargs,)
+
+
     def get_number_of_quantized_params(self):
         affected = 0
         unaffected = 0
@@ -500,7 +552,6 @@ class EfficientViTSam(nn.Module):
         for name, param in self.image_encoder.named_parameters():
             print("param name:", name)
             print("param.size():", param.size())
-
 
     def print_some_statistics(self):
         counter = 0

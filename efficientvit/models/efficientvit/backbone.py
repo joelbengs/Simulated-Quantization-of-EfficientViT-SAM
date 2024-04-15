@@ -665,7 +665,7 @@ class EfficientViTLargeBackboneQuant(nn.Module):
         ]
 
         # "ResBlocks" from ResNet34 - specifically depth_list[0] number of ResBlocks
-        for _ in range(depth_list[0]):
+        for i in range(depth_list[0]):
             block = self.build_local_block(
                 block=block_list[0],            # always "res" = ResBlock
                 in_channels=width_list[0],
@@ -681,6 +681,7 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                 observer_str=self.config.OBSERVER_W,
                 quantizer_str=self.config.QUANTIZER_W,
                 stage_id="stage1",
+                block_position=i,
                 block_name=block_list[0],        # res, passed to the QConvLayer
                 block_is_bottleneck=False,
             )

@@ -95,6 +95,7 @@ do
     --limit_iterations 3 \
     --quantize_W \
     --suppress_print \
+    --print_torchinfo \
     --script_name $(basename $0 .sh) # removes the .sh extension and the directory scripts/
     # --quantize_method_W $qmw \
     # --export_dataframe \

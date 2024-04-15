@@ -14,6 +14,23 @@ REGISTERED_BACKBONE_DESCRIPTIONS = {
     "9": "Soft quantization - one BLOCK TYPE at a time, plus save bottleneck if in those block types",
 }
 
+### Format: Model:Stage:Block:Layer
+SIMPLE_REGISTERED_BACKBONE_VERSIONS = {
+    'L0:x:x:x': {
+        'stages': ["unknown", "stage0", "stage1", "stage2", "stage3", "stage4", "stage5", "neck"],
+        'block_names': ["independent", "res", "mb", "fmb", "att", "att@3", "att@5", "dag"],
+        'block_position': [0,1,2,3,4,5,6,7,8,9],
+        'layer_position': [0,1,2,3,4,5,6,7,8,9],
+    },
+    'L0:0:0:x': {
+        'stages': ["stage0"],
+        'block_names': ["independent", "res", "mb", "fmb", "att", "att@3", "att@5", "dag"],
+        'block_position': [0],
+        'layer_position': [0,1,2,3,4,5,6,7,8,9],
+    },
+
+}
+
 REGISTERED_BACKBONE_VERSIONS = {
     # BASELINES
     'FP32_baseline': {

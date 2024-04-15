@@ -601,6 +601,7 @@ class OpSequential(nn.Module):
 #################################################################################
 
 # Implementaiton inspired by QConv2d from FQ-ViT/models/ptq/layers.py    
+### REMEBER TO CHECK SO THAT BOTH THIS ONE AND V2 ARE UP TO DATE WITH EACH OTHER
 '''
 This one implements nn.Module, while FQViT implements nn.Conv2d. Both should work.
 QConvLayer now manually assigns self.conv = nn.Conv2d to use the convolution implementation from torch.nn.
@@ -629,6 +630,8 @@ class QConvLayer(nn.Module):
             observer_str='minmax',
             quantizer_str='uniform',
             stage_id='unknown',
+            block_position = 'unknown',
+            layer_position = 'unknown',
             block_name='independent',
             block_is_bottleneck=False,
             block_is_neck=False,
@@ -664,6 +667,8 @@ class QConvLayer(nn.Module):
         self.quantizer_str = quantizer_str
         self.module_type = 'conv_weight'
         self.stage_id = stage_id
+        self.block_position = block_position
+        self.layer_position = layer_position
         self.block_name = block_name
         self.block_is_bottleneck = block_is_bottleneck
         self.block_is_neck = block_is_neck
@@ -680,6 +685,7 @@ class QConvLayer(nn.Module):
             # kwargs
             stage_id=self.stage_id,
             block_name=self.block_name,
+            position_id=self.position_id,
             block_is_bottleneck=self.block_is_bottleneck,
             block_is_neck=self.block_is_neck,
             conv_is_attention_qkv=self.conv_is_attention_qkv,
@@ -755,6 +761,8 @@ class QConvLayerV2(nn.Conv2d):
             observer_str='minmax',
             quantizer_str='uniform',
             stage_id='unknown',
+            block_position = 'unknown',
+            layer_position = 'unknown',
             block_name='independent',
             block_is_neck=False,
             block_is_bottleneck=False,
@@ -800,6 +808,8 @@ class QConvLayerV2(nn.Conv2d):
         self.quantizer_str = quantizer_str
         self.module_type = 'conv_weight'
         self.stage_id = stage_id
+        self.block_position = block_position
+        self.layer_position = layer_position
         self.block_name = block_name
         self.block_is_bottleneck = block_is_bottleneck
         self.block_is_neck = block_is_neck

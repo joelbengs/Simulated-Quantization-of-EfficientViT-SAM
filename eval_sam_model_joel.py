@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import torch
 from configs.quant_backbones_zoo import REGISTERED_BACKBONE_VERSIONS
+from configs.quant_backbones_zoo import SIMPLE_REGISTERED_BACKBONE_VERSIONS
 from lvis import LVIS
 from PIL import Image
 from pycocotools import mask as mask_util
@@ -356,9 +357,12 @@ def toggle_operation(efficientvit_sam, operation, state, backbone_version='FP32_
         raise ValueError("State must be either 'on' or 'off'")
     if backbone_version in REGISTERED_BACKBONE_VERSIONS:
         getattr(efficientvit_sam, f'toggle_selective_{operation}_{state}')(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
+    elif backbone_version in SIMPLE_REGISTERED_BACKBONE_VERSIONS:
+        getattr(efficientvit_sam, f'simple_toggle_selective_{operation}_{state}')(printout=printout, **SIMPLE_REGISTERED_BACKBONE_VERSIONS[backbone_version])
     else:
         raise NotImplementedError("Backbone version not yet implemented")
     
+### These are maybe not in use anymore?
 def calibrate_on(efficientvit_sam, backbone_version='0', suppress_print=True):
     printout=(local_rank==0 and suppress_print is False)
     if backbone_version == '0':
@@ -507,7 +511,7 @@ if __name__ == "__main__":
             print(f"Using {torch.distributed.get_world_size()} GPUs")
     torch.cuda.set_device(local_rank)
 
-    # Override the built-in print function so only mast
+    # Override the built-in print function so only master prints
 
     # model creation
     efficientvit_sam = create_sam_model(name=args.model, pretrained=True, weight_url=args.weight_url, config=config)
@@ -520,7 +524,7 @@ if __name__ == "__main__":
         # Use torchinfo.summary to print the model. Depth controls granularity of printout - all params are counted anyhow
         summary(
             efficientvit_sam.image_encoder, 
-            depth=4,
+            depth=7,
             col_names = ("output_size", "num_params", "mult_adds"),
             input_size=(1, 3, 2014, 512)
             )
