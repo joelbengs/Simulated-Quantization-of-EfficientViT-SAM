@@ -168,11 +168,11 @@ def calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank):
     printout=(local_rank==0)
     efficientvit_sam = efficientvit_sam.cuda(local_rank).eval()                 # move model to correct GPU, and turn on eval mode
     predictor = EfficientViTSamPredictor(efficientvit_sam)                      # create predictor
-    toggle_operation(efficientvit_sam, 'calibrate', 'on', args.backbone_version)                       # sets calibrate = true for all 'relevant' modules
+    toggle_operation(efficientvit_sam, 'calibrate', 'on', args.backbone_version, suppress_print=True)                       # sets calibrate = true for all 'relevant' modules
 
     for i, data in enumerate(tqdm(calib_dataloader, disable=local_rank != 0)):  # for each batch of images
         if i == len(calib_dataloader) - 1 or i == args.limit_iterations - 1:    # The lenght of the dataloader is dynamicas data is split over GPUs. zero-based enumeration              
-            toggle_operation(efficientvit_sam, 'last_calibrate', 'on', args.backbone_version)          # if second to last batch, set last_calibrate = true for all relevant modules
+            toggle_operation(efficientvit_sam, 'last_calibrate', 'on', args.backbone_version, suppress_print=True)          # if second to last batch, set last_calibrate = true for all relevant modules
        
         if i == args.limit_iterations:
             break
@@ -186,8 +186,8 @@ def calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank):
             bbox = np.array(bbox_xywh_to_xyxy(ann["bbox"]))                     # find bounding box - (i.e. the prompt)
             _ = predict_mask_from_box(predictor, bbox)                          # predict mask from bounding box
 
-    toggle_operation(efficientvit_sam, 'calibrate', 'off', args.backbone_version)
-    toggle_operation(efficientvit_sam, 'last_calibrate', 'off', args.backbone_version)
+    toggle_operation(efficientvit_sam, 'calibrate', 'off', args.backbone_version, suppress_print=True)
+    toggle_operation(efficientvit_sam, 'last_calibrate', 'off', args.backbone_version, suppress_print=True)
     
 
 def run_point(efficientvit_sam, dataloader, num_click, local_rank):

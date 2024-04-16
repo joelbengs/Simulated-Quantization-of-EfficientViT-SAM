@@ -27,7 +27,7 @@ models=(
 "xl1_quant"
 )
 models=(
-"xl1_quant"
+"l0_quant"
 )
 
 backbone_versions=(
@@ -169,7 +169,7 @@ L0:neck:7:0
 )
 
 backbone_versions=(
-"INT8_baseline"
+"L0:x:x:x"
 )
 
 echo "--------- STARTING SCRIPT ---------}"

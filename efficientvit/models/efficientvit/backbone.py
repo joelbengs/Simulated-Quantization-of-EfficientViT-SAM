@@ -668,6 +668,7 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                 quantizer_str=self.config.QUANTIZER_W,
                 stage_id="stage0",
                 block_position=0,            # block position within the stage
+                layer_position=0,
                 block_name='independent',    # the first layer is not part of any block
                 block_is_bottleneck=True,
             )

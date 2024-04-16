@@ -420,9 +420,16 @@ class EfficientViTSamImageEncoder(nn.Module):
                             if hasattr(m, attribute):
                                 setattr(m, attribute, attribute_goal_state)
                                 count_affected = count_affected + 1
-                                if printout: print(f"{attribute} {m.block_name} in {m.stage_id}", f"                module {count_all} of type {type(m)}:")
+                                if printout: print(f"{attribute} == {attribute_goal_state} for {m.block_name}-layer with id {m.stage_id}:{m.block_position}:{m.layer_position}", f"                module {count_all} of type {type(m)}:")
                             else:
                                 print(f"Warning: {attribute} does not exist in {m}")
+                        else:
+                            if printout: print(f"Attribute {attribute} on module {m.stage_id}:{m.block_position}:{m.layer_position} was not affected due to layer condition", f"                module {count_all} of type {type(m)}:")
+                    else:
+                        if printout: print(f"Attribute {attribute} on module {m.stage_id}:{m.block_position}:{m.layer_position} was not affected due to block condition", f"                module {count_all} of type {type(m)}:")
+                else:
+                    if printout: print(f"Attribute {attribute} on module {m.stage_id}:{m.block_position}:{m.layer_position} was not affected due to stage condition", f"                module {count_all} of type {type(m)}:")
+
         if printout:
             print(f"SUMMARY: Attribute {attribute} to {attribute_goal_state} for {count_affected} out of {count_all} modules. There were {count_candidates} QConvLayers.\nStages = {stages} and block_positions = {block_positions} and layer_positions = {layer_positions}.")
 

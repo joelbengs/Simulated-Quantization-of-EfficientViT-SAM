@@ -14,7 +14,14 @@ def create_simple_backbone_versions_L0():
         [1,1,1,2,2,2,2,1]  # the neck has 3 blocks of conv+upsample, one learnable layer each. It has 4 FusedMBconvs, and 1 output conv
     ]
 
-    backbone_dict = {}  # Initialize an empty dictionary
+    # Initialize a backbone which quantize all layers
+    backbone_dict = {
+        'L0:x:x:x': {
+        'stages': ["unknown", "stage0", "stage1", "stage2", "stage3", "stage4", "stage5", "neck"],
+        'block_positions': [0,1,2,3,4,5,6,7,8,9],
+        'layer_positions': [0,1,2,3,4,5,6,7,8,9],
+        }
+     }
 
     # block granularity:
     for s, block_depth in zip(stages_L0, block_depth_per_stage_L0):

@@ -1255,6 +1255,7 @@ class QLiteMLA(nn.Module):
             norm=norm[1],         # override to bn2d
             act_func=act_func[1], # override to gelu
             conv_is_attention_projection=True,
+            layer_position=3,
             **kwargs,
         )
 
@@ -1343,6 +1344,7 @@ class QEfficientViTBlock(nn.Module):
             use_bias=(True, True, False),
             norm=(None, None, norm),
             act_func=(act_func, act_func, None),
+            part_of_efficientViT_module=True,
             **kwargs,
         )
         self.local_module = ResidualBlock(local_module, IdentityLayer())
