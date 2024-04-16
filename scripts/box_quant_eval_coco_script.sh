@@ -27,7 +27,7 @@ models=(
 "xl1_quant"
 )
 models=(
-"l0_quant"
+"xl1_quant"
 )
 
 backbone_versions=(
@@ -168,6 +168,10 @@ L0:neck:6:1
 L0:neck:7:0
 )
 
+backbone_versions=(
+"INT8_baseline"
+)
+
 echo "--------- STARTING SCRIPT ---------}"
 for bbv in "${backbone_versions[@]}"
 do
@@ -186,8 +190,7 @@ do
     --backbone_version $bbv \
     --limit_iterations 3 \
     --quantize_W \
-    --export_dataframe \
-    --suppress_print \
+    --print_torchinfo \
     --script_name $(basename $0 .sh) # removes the .sh extension and the directory scripts/
     # --quantize_method_W $qmw \
     # --export_dataframe \

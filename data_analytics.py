@@ -32,29 +32,131 @@ if __name__ == "__main__":
     intersection_columns = [col for col in selected_columns if col in df.columns]
     selected_data = df[intersection_columns]
     print("data analytics script is working with the following data:")
+    print(df.columns)
     print(selected_data)
 
     ################################
     ###       Experiment 5       ###
     ################################
 
-    # Rename models to remove _quant ending
-    df['model'] = df['model'].str.replace('_quant', '')
-    df['model'] = df['model'].str.upper()
-    df['backbone_version'] = df['backbone_version'].str.replace('L0:', '')
+    def plotE5(df, title: str, xlabel: str, name: str, rotate=False, zoom=False):
+        fig, ax = plt.subplots(figsize=(25,7))
+        ax.plot(df['backbone_version'], df['all'])
 
-    fig, ax = plt.subplots()
-    ax.plot(df['backbone_version'], df['all'])
+        # vertical lines at each x mark
+        for x in df['backbone_version']:
+            ax.axvline(x, color='lightgray', linestyle='dotted')
+        baseline_value=78.509
+        ax.axhline(baseline_value, color='red', linestyle='dotted')
+        ax.text(0, baseline_value - 0.1 if zoom else baseline_value - 1, 'Baseline', va='top', ha="right")
 
-    ax.set_xlabel('layer quantized')
-    ax.set_ylabel('box prompt "all" score')
-    ax.set_ylim([45,85])
-    ax.xticks(rotation=90)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel('Ground truth box prompt "all" score (higher is better)')
+        if rotate:
+            plt.xticks(rotation=70)
+        if zoom:
+            ax.set_ylim([77,79])
+
+        plt.suptitle(title)
+        plt.savefig(f'./plots/graphs/{name}.png', bbox_inches='tight')
+        plt.close()
+
+
+    df_block = df.copy()
+    df_layer = df.copy()
+
+    df_block['model'] = df_block['model'].str.replace('_quant', '')
+    df_block['model'] = df_block['model'].str.upper()
+    df_block['backbone_version'] = df_block['backbone_version'].str.replace('L0:', '')
+    df_block['backbone_version'] = df_block['backbone_version'].str.replace('stage', 'stage ')
+    df_block['backbone_version'] = df_block['backbone_version'].str.replace(':', '\nblock ', 1) # only first occurance
+    df_block['backbone_version'] = df_block['backbone_version'].str.replace(':', '\nlayer ')
+
+    df_layer['model'] = df_layer['model'].str.replace('_quant', '')
+    df_layer['model'] = df_layer['model'].str.upper()
+    df_layer['backbone_version'] = df_layer['backbone_version'].str.replace('L0:', '')
+    df_layer['backbone_version'] = df_layer['backbone_version'].str.replace('stage', '')
+
+    # split data: stage:block:x vs stage:block:layer
+    df_block = df_block[df_block['backbone_version'].str.endswith('x')] # remove layerwise experiments
+    df_layer = df_layer[~df_layer['backbone_version'].str.endswith('x')] # remove blockwise experiments
+
+    plotE5(df_block,
+           title='Block-wise analysis of weight quantization to INT8 of EfficientViT-SAM L0 image encoder',
+            xlabel='L0 base model with only one block quantized. All layers of the block are quantized',
+            name='E5_block',
+            )
     
-    plt.suptitle(f'Experiment 5, layer-wise analysis')
-    plt.savefig(f'./plots/E5.png', bbox_inches='tight')
-    plt.close() 
+    plotE5(df_layer,
+           title='Layer-wise analysis of weight quantization to INT8 of EfficientViT-SAM L0 image encoder',
+           xlabel='L0 base model with only one layer quantized. Naming scheme is stage:block:layer',
+           name='E5_layer',
+           rotate=True,
+           )
+    
+    plotE5(df_block,
+           title='Block-wise analysis of weight quantization to INT8 of EfficientViT-SAM L0 image encoder',
+            xlabel='L0 base model with only one block quantized. All layers of the block are quantized',
+            name='E5_block_zoom',
+            zoom=True,
+            )
+    
+    plotE5(df_layer,
+           title='Layer-wise analysis of weight quantization to INT8 of EfficientViT-SAM L0 image encoder',
+           xlabel='L0 base model with only one layer quantized. Naming scheme is stage:block:layer',
+           name='E5_layer_zoom',
+           rotate=True,
+           zoom=True,
+           )
 
+    
+
+    #df_layer_granularity = df[~df['backbone_version'].str.endswith('x')]
+    #df_block_granularity['backbone_version'] = df_block_granularity['backbone_version'].str.replace(' x', '')
+    #df_layer_granularity['backbone_version'] = df_layer_granularity['backbone_version'].str.replace(':', '\nlayer ')
+
+
+    ''' block-wise '''
+    '''
+    fig, ax = plt.subplots(figsize=(20,5))
+    ax.plot(df_block_granularity['backbone_version'], df_block_granularity['all'])
+
+    # vertical lines at each x mark
+    for x in df_block_granularity['backbone_version']:
+        ax.axvline(x, color='lightgray', linestyle='dotted')
+    # baseline
+    ax.axhline(78.509, color='lightgray', linestyle='dotted')
+
+    ax.set_xlabel('L0 base model with only one block quantized. All layers of the block are quantized')
+    ax.set_ylabel('Ground truth box prompt "all" score (higher is better)')
+    #ax.set_ylim([45,85])
+    #plt.xticks(rotation=70)
+    
+    plt.suptitle('Experiment 5, block-wise analysis of quantization of EfficientViT-SAM L0 image encoder')
+    plt.savefig(f'./plots/E5_block.png', bbox_inches='tight')
+    plt.close()
+    '''
+    ''' layer-wise '''
+    '''
+    fig, ax = plt.subplots(figsize=(30,5))
+    ax.plot(df_layer_granularity['backbone_version'], df_layer_granularity['all'])
+
+    # vertical lines at each x mark
+    for x in df_layer_granularity['backbone_version']:
+        ax.axvline(x, color='black', linestyle='dotted', linewidth=0.25)
+    
+    # baseline
+    ax.axhline(78.509, color='lightgray', linestyle='dotted')
+
+    ax.set_xlabel('L0 model with only one layer quantized, identified as "stage:block:layer"')
+    ax.set_ylabel('Ground truth box prompt "all" score (higher is better)')
+    #ax.set_ylim([75,80])
+    #plt.xticks(rotation=70)
+    
+    plt.suptitle(f'Experiment 5, layer-wise analysis of quantization of EfficientViT-SAM L0 image encoder')
+    plt.savefig(f'./plots/E5_layer.png', bbox_inches='tight')
+    plt.close() 
+    '''
 
     ################################
     ###       Experiment 4       ###
