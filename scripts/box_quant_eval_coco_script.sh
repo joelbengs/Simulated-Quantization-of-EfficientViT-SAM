@@ -77,6 +77,8 @@ backbone_versions=(
 )
 
 backbone_versions=(
+L0:-:-:-
+L0:x:x:x
 L0:stage0:0:x
 L0:stage0:1:x
 L0:stage1:0:x
@@ -169,7 +171,7 @@ L0:neck:7:0
 )
 
 backbone_versions=(
-"L0:x:x:x"
+L0:-:-:-
 )
 
 echo "--------- STARTING SCRIPT ---------}"
@@ -190,9 +192,11 @@ do
     --backbone_version $bbv \
     --limit_iterations 3 \
     --quantize_W \
-    --print_torchinfo \
+    --plot_distributions \
+    --suppress_print \
     --script_name $(basename $0 .sh) # removes the .sh extension and the directory scripts/
     # --quantize_method_W $qmw \
+    #--plot_distributions \
     # --export_dataframe \
     # --quantize_A \
     # --print_torchinfo \

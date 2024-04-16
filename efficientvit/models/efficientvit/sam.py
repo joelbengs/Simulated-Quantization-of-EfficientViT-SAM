@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.transforms as transforms
+from efficientvit.models.ptq.observer.base import BaseObserver
 from segment_anything import SamAutomaticMaskGenerator
 from segment_anything.modeling import MaskDecoder, PromptEncoder, TwoWayTransformer
 from segment_anything.modeling.mask_decoder import MaskDecoder
@@ -551,6 +552,16 @@ class EfficientViTSam(nn.Module):
     def simple_toggle_selective_quant_off(self, **kwargs):
         self.image_encoder.simple_toggle_selective_attribute(attribute="quant", attribute_goal_state=False, **kwargs,)
 
+    ### statistics
+    def toggle_monitor_distributions_on(self, **kwargs):
+        for m in self.image_encoder.modules():
+            if type(m) in [QConvLayer, QConvLayerV2]:
+                m.monitor_distributions = True
+
+    def toggle_monitor_distributions_off(self, **kwargs):
+        for m in self.image_encoder.modules():
+            if type(m) in [QConvLayer, QConvLayerV2]:
+                m.monitor_distributions = False
 
     def get_number_of_quantized_params(self):
         affected = 0
@@ -568,36 +579,40 @@ class EfficientViTSam(nn.Module):
             print("param name:", name)
             print("param.size():", param.size())
 
-    def plot_histogram_of_module(self, m: nn.Module):
-        if type(m) in [QConvLayer, QConvLayerV2]:
-            observer = m.weight_observer
-            if observer.stored_weight_tensor is None:
-                print(f"The tensor of {observer.stage_id}:{observer.block_position}:{observer.layer_position} is None!")
+    def plot_histogram_of_observer(self, observer: BaseObserver):
+            if observer.stored_tensor.numel() == 0:
+                print(f"The tensor of {observer.stage_id}:{observer.block_position}:{observer.layer_position}:{observer.weight_norm_or_act} observer is empty! Has calibration been performed with attribute monitor_distributions turned on?")
 
-            tensor = observer.stored_weight_tensor.clone() # might need to clone to isolate from other processes
+            tensor = observer.stored_tensor.clone() # might need to clone to isolate from other processes
             tensor = tensor.detach() # can't call numpy() on tensor that requires grad
             tensor = tensor.cpu() # torch.histogram is not implemented on CUDA backend.
 
-            hist_values, bin_edges = torch.histogram(tensor, density=True) # unsure about using density here
+            hist_values, bin_edges = torch.histogram(tensor, density=True) # density calculates the density distributions isntead of just number of occurances
 
             plt.bar(bin_edges[:-1], hist_values, width = 0.1)
-            plt.title(f"Weights of {observer.stage_id}:{observer.block_position}:{observer.layer_position} - {observer.block_name}, {observer.operation_type}, \n distribution of all parameters of tensor with shape {tensor.size()}")
+            plt.title(f"Distribution of {observer.weight_norm_or_act} of {observer.stage_id}:{observer.block_position}:{observer.layer_position} - {observer.block_name}, \n distribution of tensor with shape {tensor.size()}")
             
-            plt.axvline(tensor.min().item(), color='r', linestyle='dotted', linewidth=1)
-            plt.axvline(tensor.max().item(), color='g', linestyle='dotted', linewidth=1)
-            plt.axvline(torch.quantile(tensor, 0.5).item(), color='b', linestyle='dotted', linewidth=1)  # 50th percentile (median)
-            plt.xlabel("Weight value")
-            plt.ylabel("Normalized number of occurances")
+            print("SIZE IS", tensor.size())
 
-            plt.savefig(f'./plots//histograms/histogram_{observer.stage_id}:{observer.block_position}:{observer.layer_position}.png')
+            # plot mean and standard deviation
+            mean = torch.mean(tensor).item()
+            std_dev = torch.std(tensor).item()
+            plt.axvline(mean, color='b', linestyle='dotted', linewidth=1)
+            plt.axvline(mean - std_dev, color='r', linestyle='dashed', linewidth=1)  # mean - std_dev
+            plt.axvline(mean + std_dev, color='r', linestyle='dashed', linewidth=1)  # mean + std_dev
+
+            plt.axvline(tensor.min().item(), color='g', linestyle='dotted', linewidth=1)
+            plt.axvline(tensor.max().item(), color='g', linestyle='dotted', linewidth=1)
+            plt.xlabel("Weight value")
+            plt.ylabel(f"Relative Frequency of pre-trained weights" if observer.weight_norm_or_act == 'weight' else "Relative Frequency after calibration")
+            plt.savefig(f'./plots//histograms/histogram_{observer.stage_id}:{observer.block_position}:{observer.layer_position}_{observer.weight_norm_or_act}.png')
             plt.close()
 
-    def plot_box_plot_of_module(self, m: nn.Module):
-        if type(m) in [QConvLayer,QConvLayerV2]:
-            observer = m.weight_observer
-            if observer.stored_weight_tensor is None:
-                print(f"The tensor of {observer.stage_id}:{observer.block_position}:{observer.layer_position} is None!")
-            tensor = observer.stored_weight_tensor # might need to clone to isolate from other processes
+    def plot_box_plot_of_observer(self, observer: BaseObserver):
+            if observer.stored_tensor.numel() == 0:
+                print(f"The tensor of {observer.stage_id}:{observer.block_position}:{observer.layer_position}:{observer.weight_norm_or_act} observer is empty! Has calibration been performed with attribute monitor_distributions turned on?")
+
+            tensor = observer.stored_tensor # might need to clone to isolate from other processes
             tensor = tensor.detach() # can't call numpy() on tensor that requires grad
             tensor = tensor.cpu() #torch.histogram is not implemented on CUDA backend.
             # Reshape tensor to 2D, with second dimension being the flattened kernel
@@ -627,18 +642,23 @@ class EfficientViTSam(nn.Module):
 
             # Create boxplot
             plt.boxplot(tensor_2d, vert=True, patch_artist=True)
-            plt.title(f"Weights of {observer.stage_id}:{observer.block_position}:{observer.layer_position} - {observer.block_name}, {observer.operation_type}, \n distribution of all parameters of tensor with shape {tensor.size()}")
-            plt.xlabel("Channel number (output)")
-            plt.ylabel("Weight value")
+            plt.title(f"Distribution of {observer.weight_norm_or_act} of {observer.stage_id}:{observer.block_position}:{observer.layer_position} - {observer.block_name}, \n distribution of tensor with shape {tensor.size()}")
+            plt.xlabel("Channel number (output) - limited to the 16 with the largest outliers")
+            plt.ylabel(f"Relative Frequency of pre-trained weights" if observer.weight_norm_or_act == 'weight' else "Relative Frequency after calibration")
 
-            plt.savefig(f'./plots/boxplots/box_plot_{observer.stage_id}:{observer.block_position}:{observer.layer_position}.png')
+            plt.savefig(f'./plots/boxplots/box_plot_{observer.stage_id}:{observer.block_position}:{observer.layer_position}_{observer.weight_norm_or_act}.png')
             plt.close()
 
     def plot_distributions_of_image_encoder(self):
         for m in self.image_encoder.modules():
             if type(m) in [QConvLayer, QConvLayerV2]:
-                self.plot_histogram_of_module(m)
-                self.plot_box_plot_of_module(m)
+                if hasattr(m, 'weight_observer'):
+                    self.plot_histogram_of_observer(m.weight_observer)
+                    self.plot_box_plot_of_observer(m.weight_observer)
+
+                if hasattr(m, 'act_observer'):
+                    self.plot_histogram_of_observer(m.act_observer)
+                    self.plot_box_plot_of_observer(m.act_observer)
 
     def print_some_statistics(self):
         counter = 0

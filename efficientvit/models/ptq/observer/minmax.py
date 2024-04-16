@@ -33,7 +33,7 @@ class MinmaxObserver(BaseObserver):
         Args:
             v (torch.Tensor): Input tensor to be observed.
         """
-        self.store_tensor(v) #stores the tensor for statistics.
+        #self.store_tensor(v) #stores the tensor for statistics.
         v = self.reshape_tensor(v)
         cur_max = v.max(axis=1).values
         if self.max_val is None:

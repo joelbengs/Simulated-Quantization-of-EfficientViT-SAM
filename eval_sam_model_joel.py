@@ -137,6 +137,8 @@ def run_box(efficientvit_sam, dataloader, local_rank):
     output = []
     for i, data in enumerate(tqdm(dataloader, disable=local_rank != 0)):        # for each batch of images
         data = data[0]                                                          # fetch the images?
+        if i == 10:
+            break
         sam_image = np.array(Image.open(data["image_path"]).convert("RGB"))     # convert ot RGB image
         predictor.set_image(sam_image)                                          # send image to predictor
         anns = data["anns"]                                                     # fetch annotations for the batch
@@ -452,6 +454,29 @@ def calculate_savings(efficientvit_sam):
     }
 
 
+def full_precision_distribution_analysis(efficientvit_sam):
+    '''
+    This function plots the distributions of weights, activations and norms of a given model.
+    The results are saved under .plots/histograms and .plots/box_plots
+
+    This functinoality is implemented using observers. Each convolutional layer has one observer object connected to each of its operatiions (conv, norm, act).
+    When the attribute "monitor_distirbutions" is toggled to True, the observer object will store all sample tensors passing through during calibration.
+    Weights are static, so more than one pass of calibration will not alter the weight distributions.
+    Tensors passing throgh norm and activation will be concatenated in the observer. There is a risk for memory overflow, in which case the tensors should be reduced to histogram representations before storage.
+    
+    After calibration, the tensor stored in each observer is processed into a histogram and exported with matplotlib.
+
+    To plot the  call the main method with:
+    
+    --model l0_quant - or any other quant model. only models using a quantizable backbone and neck can be analyzed
+    --backbone_version L0:-:- - or another FP32 baseline backbone. If anything is quantized during calibration, activations and norms are distorted
+    --plot_distributions - this will trigger this function
+
+    '''
+    # assuming efficientvit_sam.toggle_monitor_distributions_on() has been called before calibration, and calibration has been run for at least one sample.
+    efficientvit_sam.plot_distributions_of_image_encoder()
+    efficientvit_sam.toggle_monitor_distributions_off()
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str)
@@ -488,6 +513,8 @@ if __name__ == "__main__":
     parser.add_argument("--calibration_mode_W", choices=["layer_wise", "channel_wise"]) #TODO - implement this
     parser.add_argument("--calibration_mode_A", choices=["layer_wise", "channel_wise"]) #TODO - implement this
     parser.add_argument("--calibration_mode_N", choices=["layer_wise", "channel_wise"]) #TODO - implement this
+
+    parser.add_argument("--plot_distributions", action="store_true", help="monitors and plots distributions of weiights and activations. Must be used with _quant model and should be used with an FP32 backbone")
 
     parser.add_argument("--backbone_version", type=str, default='FP32_baseline')
 
@@ -556,14 +583,15 @@ if __name__ == "__main__":
         print(f"The dataloader contains {len(dataloader.dataset)} images.")
 
     # calibration dataset
-    if args.quantize:
+    if args.quantize or args.plot_distributions:
         calib_dataset = eval_dataset(args.dataset, args.image_root_calibration, args.prompt_type, args.annotation_json_file, args.source_json_file)
         calib_sampler = DistributedSampler(calib_dataset, shuffle=False)
         calib_dataloader = DataLoader(calib_dataset, batch_size=1, sampler=calib_sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn)
         if not args.suppress_print:
             print(f"The calibration dataloader contains {len(calib_dataloader.dataset)} images.")
 
-
+    if args.plot_distributions and local_rank == 0:
+        efficientvit_sam.toggle_monitor_distributions_on()
 
     # inference + calibration + quantization
     if args.prompt_type == "point":
@@ -580,7 +608,6 @@ if __name__ == "__main__":
                 print("Calibrating box...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
             toggle_operation(efficientvit_sam, 'quant', 'on', args.backbone_version, args.suppress_print)
-        #efficientvit_sam.plot_distributions_of_image_encoder()
         results = run_box(efficientvit_sam, dataloader, local_rank)
 
 
@@ -595,8 +622,9 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError()
 
-    #if local_rank == 0:
+    if args.plot_distributions and local_rank == 0:
         #efficientvit_sam.print_some_statistics()
+        full_precision_distribution_analysis(efficientvit_sam)
 
     # evaluation - only done my the master process, not other parallell processes
     if local_rank == 0:

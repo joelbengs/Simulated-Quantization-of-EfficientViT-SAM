@@ -19,7 +19,7 @@ class BaseObserver:
         conv_is_attention_projection=None,
         block_is_bottleneck=None,
         block_is_neck=None,
-        operation_type="unknown"
+        weight_norm_or_act=None,
             ):
         
         self.module_type = module_type
@@ -38,9 +38,9 @@ class BaseObserver:
         self.conv_is_attention_qkv=conv_is_attention_qkv
         self.conv_is_attention_scaling=conv_is_attention_scaling
         self.conv_is_attention_projection=conv_is_attention_projection
-        self.operation_type = operation_type
 
-        self.stored_weight_tensor = None
+        self.weight_norm_or_act=weight_norm_or_act
+        self.stored_tensor = torch.tensor([])
 
     def reshape_tensor(self, v):
         if not isinstance(v, torch.Tensor):
@@ -64,9 +64,18 @@ class BaseObserver:
     def get_quantization_params(self, *args, **kwargs):
         raise NotImplementedError
 
-    # TODO: Verify this code
     def store_tensor(self, tensor: torch.tensor):
-        #if self.operation_type == 'conv_weight'
-        self.stored_weight_tensor = tensor
-        #else:
-        #    raise NotImplementedError 
+        # store just one copy since weights are static
+        if self.weight_norm_or_act == 'weight':
+            if self.stored_tensor.numel() == 0:
+                self.stored_tensor = tensor
+
+        # store all samples passing through since they are not static
+        # the incoming tensor is a tensor.clone() and can therefore be moved to the cpu for concatenation
+        elif self.weight_norm_or_act == 'act':
+            self.stored_tensor = torch.cat((self.stored_tensor.to('cpu'), tensor.to('cpu')), dim=0)  # dim 0 to keep different channels seperate
+
+        elif self.weight_norm_or_act == 'norm':
+            raise NotImplementedError("store_tensor for norms not yet implemented")
+        else:
+            raise NotImplementedError('observer only built for weight, act or norm operations')

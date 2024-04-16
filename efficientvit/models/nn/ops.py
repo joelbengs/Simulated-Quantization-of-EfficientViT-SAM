@@ -623,7 +623,8 @@ class QConvLayer(nn.Module):
             quant=False,
             calibrate=False,
             last_calibrate=False,
-            bit_type=BIT_TYPE_DICT['int8'],
+            monitor_distributions=False,    # makes the observer monitor distributions
+            bit_type=BIT_TYPE_DICT['int8'], # needs expansion into W A N
             calibration_mode='layer_wise',
             observer_str='minmax',
             quantizer_str='uniform',
@@ -659,6 +660,8 @@ class QConvLayer(nn.Module):
         self.quant = quant
         self.calibrate = calibrate
         self.last_calibrate = last_calibrate
+        self.monitor_distributions=monitor_distributions
+
         self.bit_type = bit_type
         self.calibration_mode = calibration_mode
         self.observer_str = observer_str
@@ -674,7 +677,7 @@ class QConvLayer(nn.Module):
         self.conv_is_attention_scaling = conv_is_attention_scaling
         self.conv_is_attention_projection = conv_is_attention_projection
 
-        #observer for convoultions
+        # observer for convoultions
         self.weight_observer = build_observer(
             self.observer_str,
             self.module_type, 
@@ -690,21 +693,51 @@ class QConvLayer(nn.Module):
             conv_is_attention_qkv=self.conv_is_attention_qkv,
             conv_is_attention_scaling=self.conv_is_attention_scaling,
             conv_is_attention_projection=self.conv_is_attention_projection,
-            operation_type='conv_weight'
+            weight_norm_or_act='weight',
             )
-        self.quantizer = build_quantizer(
+        self.weight_quantizer = build_quantizer(
             self.quantizer_str,
             self.bit_type,
             self.weight_observer,
             self.module_type,
             )
 
+        # observer for activations
+        if self.act is not None:
+            self.act_observer = build_observer(
+                self.observer_str,
+                self.module_type, 
+                self.bit_type,
+                self.calibration_mode,
+                # kwargs
+                stage_id=self.stage_id,
+                block_position=self.block_position,
+                layer_position=self.layer_position,
+                block_name=self.block_name,
+                block_is_bottleneck=self.block_is_bottleneck,
+                block_is_neck=self.block_is_neck,
+                conv_is_attention_qkv=self.conv_is_attention_qkv,
+                conv_is_attention_scaling=self.conv_is_attention_scaling,
+                conv_is_attention_projection=self.conv_is_attention_projection,
+                weight_norm_or_act='act',
+                )
+            self.act_quantizer = build_quantizer(
+                self.quantizer_str,
+                self.bit_type,
+                self.act_observer,
+                self.module_type,
+                )
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+
+        if self.monitor_distributions:
+            self.weight_observer.store_tensor(self.conv.weight)
+
         # calibrate
         if self.calibrate:
-            self.quantizer.observer.update(self.conv.weight) # for all batches of calibration data: update statistics
+            self.weight_quantizer.observer.update(self.conv.weight) # for all batches of calibration data: update statistics
             if self.last_calibrate:                          # after the last batch, fetch S and Z of the quantizer
-                self.quantizer.update_quantization_params(x)
+                self.weight_quantizer.update_quantization_params(x)
         # dropout
         if self.dropout is not None:
             x = self.dropout(x)
@@ -712,7 +745,7 @@ class QConvLayer(nn.Module):
         # quantization
         if self.quant:
             # quant + dequant the weights
-            w = self.quantizer(self.conv.weight)
+            w = self.weight_quantizer(self.conv.weight)
             # passing the parameters from self.conv to F.conv2d
             x = F.conv2d(x, w, self.conv.bias, self.conv.stride, self.conv.padding, self.conv.dilation, self.conv.groups)
         else:
@@ -725,6 +758,8 @@ class QConvLayer(nn.Module):
         # activation
         if self.act:
             x = self.act(x)
+            if self.monitor_distributions:
+                self.act_observer.store_tensor(x.clone()) # to freely move it between devices in analysis
 
         return x
     
@@ -751,6 +786,7 @@ class QConvLayerV2(nn.Conv2d):
             quant=False,
             calibrate=False,
             last_calibrate=False,
+            monitor_distributions=False,    # makes the observer monitor distributions
             bit_type=BIT_TYPE_DICT['int8'],
             calibration_mode='layer_wise',
             observer_str='minmax',
@@ -796,6 +832,8 @@ class QConvLayerV2(nn.Conv2d):
         self.quant = quant
         self.calibrate = calibrate
         self.last_calibrate = last_calibrate
+        self.monitor_distributions=monitor_distributions
+
         self.bit_type = bit_type
         self.calibration_mode = calibration_mode
         self.observer_str = observer_str
@@ -811,7 +849,7 @@ class QConvLayerV2(nn.Conv2d):
         self.conv_is_attention_scaling = conv_is_attention_scaling
         self.conv_is_attention_projection = conv_is_attention_projection
 
-        #observer for convoultions
+         # observer for convoultions
         self.weight_observer = build_observer(
             self.observer_str,
             self.module_type, 
@@ -819,13 +857,15 @@ class QConvLayerV2(nn.Conv2d):
             self.calibration_mode,
             # kwargs
             stage_id=self.stage_id,
+            block_position=self.block_position,
+            layer_position=self.layer_position,
             block_name=self.block_name,
             block_is_bottleneck=self.block_is_bottleneck,
             block_is_neck=self.block_is_neck,
             conv_is_attention_qkv=self.conv_is_attention_qkv,
             conv_is_attention_scaling=self.conv_is_attention_scaling,
             conv_is_attention_projection=self.conv_is_attention_projection,
-            operation_type='conv_weight'
+            weight_norm_or_act='weight',
             )
         self.quantizer = build_quantizer(
             self.quantizer_str,
@@ -835,6 +875,9 @@ class QConvLayerV2(nn.Conv2d):
             )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.monitor_distributions:
+            self.quantizer.observer.store_tensor(self.weight)
+
         # calibrate
         if self.calibrate:
             self.quantizer.observer.update(self.weight) # for all batches of calibration data: update statistics
@@ -1283,8 +1326,8 @@ class QLiteMLA(nn.Module):
         )
 
         # lightweight linear attention
-        q = self.kernel_func(q)
-        k = self.kernel_func(k)
+        q = self.kernel_func(q) # ReLu nn.Module
+        k = self.kernel_func(k) # ReLu nn.Module
 
         # linear matmul
         trans_k = k.transpose(-1, -2)
