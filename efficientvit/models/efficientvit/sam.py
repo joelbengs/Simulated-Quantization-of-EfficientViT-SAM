@@ -589,22 +589,28 @@ class EfficientViTSam(nn.Module):
 
             hist_values, bin_edges = torch.histogram(tensor, density=True) # density calculates the density distributions isntead of just number of occurances
 
-            plt.bar(bin_edges[:-1], hist_values, width = 0.1)
-            plt.title(f"Distribution of {observer.weight_norm_or_act} of {observer.stage_id}:{observer.block_position}:{observer.layer_position} - {observer.block_name}, \n distribution of tensor with shape {tensor.size()}")
+            fig, ax = plt.subplots(figsize=(10, 5))
+            ax.bar(bin_edges[:-1], hist_values, width = 0.1)
+            ax.set_title(f"Distribution of {observer.weight_norm_or_act} of {observer.stage_id}:{observer.block_position}:{observer.layer_position} - {observer.block_name}, \n tensor shape {tensor.size()}, 25 calibration samples")
             
-            print("SIZE IS", tensor.size())
+            print(f"Plotting {observer.stage_id}:{observer.block_position}:{observer.layer_position}:{observer.weight_norm_or_act} with tensor size {tensor.size()}")
 
             # plot mean and standard deviation
             mean = torch.mean(tensor).item()
             std_dev = torch.std(tensor).item()
-            plt.axvline(mean, color='b', linestyle='dotted', linewidth=1)
-            plt.axvline(mean - std_dev, color='r', linestyle='dashed', linewidth=1)  # mean - std_dev
-            plt.axvline(mean + std_dev, color='r', linestyle='dashed', linewidth=1)  # mean + std_dev
+            min_val = tensor.min().item()
+            max_val = tensor.max().item()
+            ax.axvline(mean, color='b', linestyle='dotted', linewidth=1, label=f'mean = {round(mean, 3)}')
+            ax.axvline(mean - std_dev, color='r', linestyle='dashed', linewidth=1, label=f'mean - std_dev = {round(mean - std_dev, 3)}')  # mean - std_dev
+            ax.axvline(mean + std_dev, color='r', linestyle='dashed', linewidth=1, label=f'mean + std_dev = {round(mean + std_dev, 3)}')  # mean + std_dev
 
-            plt.axvline(tensor.min().item(), color='g', linestyle='dotted', linewidth=1)
-            plt.axvline(tensor.max().item(), color='g', linestyle='dotted', linewidth=1)
-            plt.xlabel("Weight value")
-            plt.ylabel(f"Relative Frequency of pre-trained weights" if observer.weight_norm_or_act == 'weight' else "Relative Frequency after calibration")
+            ax.axvline(min_val, color='g', linestyle='dotted', linewidth=1, label=f'min = {round(min_val, 3)}')
+            ax.axvline(max_val, color='g', linestyle='dotted', linewidth=1, label=f'max = {round(max_val, 3)}')
+            ax.legend(bbox_to_anchor=(1.01, 1), loc='upper left', borderaxespad=0.)
+            
+            ax.set_xlabel("Weight value")
+            ax.set_ylabel(f"Relative Frequency of pre-trained weights" if observer.weight_norm_or_act == 'weight' else "Relative Frequency after calibration")
+            fig.tight_layout()
             plt.savefig(f'./plots//histograms/histogram_{observer.stage_id}:{observer.block_position}:{observer.layer_position}_{observer.weight_norm_or_act}.png')
             plt.close()
 
@@ -617,8 +623,6 @@ class EfficientViTSam(nn.Module):
             tensor = tensor.cpu() #torch.histogram is not implemented on CUDA backend.
             # Reshape tensor to 2D, with second dimension being the flattened kernel
             tensor_2d = tensor.view(tensor.shape[0], -1)
-            # Select the first 12 channels
-            tensor_2d = tensor_2d[:12]
 
             # Calculate Interquartile Range (IQR) for each channel
             Q1 = torch.quantile(tensor_2d, 0.25, dim=1)
@@ -642,7 +646,7 @@ class EfficientViTSam(nn.Module):
 
             # Create boxplot
             plt.boxplot(tensor_2d, vert=True, patch_artist=True)
-            plt.title(f"Distribution of {observer.weight_norm_or_act} of {observer.stage_id}:{observer.block_position}:{observer.layer_position} - {observer.block_name}, \n distribution of tensor with shape {tensor.size()}")
+            plt.title(f"Distribution of {observer.weight_norm_or_act} of {observer.stage_id}:{observer.block_position}:{observer.layer_position} - {observer.block_name}, \n tensor shape {tensor.size()}, 25 calibration samples")
             plt.xlabel("Channel number (output) - limited to the 16 with the largest outliers")
             plt.ylabel(f"Relative Frequency of pre-trained weights" if observer.weight_norm_or_act == 'weight' else "Relative Frequency after calibration")
 

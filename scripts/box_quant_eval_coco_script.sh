@@ -190,7 +190,7 @@ do
     --model $model \
     --prompt_type $prompt_type \
     --backbone_version $bbv \
-    --limit_iterations 3 \
+    --limit_iterations 25 \
     --quantize_W \
     --plot_distributions \
     --suppress_print \

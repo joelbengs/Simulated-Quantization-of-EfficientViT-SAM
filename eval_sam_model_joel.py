@@ -608,6 +608,10 @@ if __name__ == "__main__":
                 print("Calibrating box...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
             toggle_operation(efficientvit_sam, 'quant', 'on', args.backbone_version, args.suppress_print)
+    
+        if args.plot_distributions and local_rank == 0:
+            full_precision_distribution_analysis(efficientvit_sam)
+        
         results = run_box(efficientvit_sam, dataloader, local_rank)
 
 
@@ -622,9 +626,7 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError()
 
-    if args.plot_distributions and local_rank == 0:
-        #efficientvit_sam.print_some_statistics()
-        full_precision_distribution_analysis(efficientvit_sam)
+
 
     # evaluation - only done my the master process, not other parallell processes
     if local_rank == 0:
