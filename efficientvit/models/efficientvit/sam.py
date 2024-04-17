@@ -579,7 +579,7 @@ class EfficientViTSam(nn.Module):
             print("param name:", name)
             print("param.size():", param.size())
 
-    def plot_histogram_of_observer(self, observer: BaseObserver):
+    def plot_histogram_of_observer(self, observer: BaseObserver, sizes):
             if observer.stored_tensor.numel() == 0:
                 print(f"The tensor of {observer.stage_id}:{observer.block_position}:{observer.layer_position}:{observer.weight_norm_or_act} observer is empty! Has calibration been performed with attribute monitor_distributions turned on?")
 
@@ -591,9 +591,10 @@ class EfficientViTSam(nn.Module):
 
             fig, ax = plt.subplots(figsize=(10, 5))
             ax.bar(bin_edges[:-1], hist_values, width = 0.1)
-            ax.set_title(f"Distribution of {observer.weight_norm_or_act} of {observer.stage_id}:{observer.block_position}:{observer.layer_position} - {observer.block_name}, \n tensor shape {tensor.size()}, 25 calibration samples")
+            ax.set_title(f"Distribution of {observer.weight_norm_or_act} of {observer.stage_id}:{observer.block_position}:{observer.layer_position} - {observer.block_name}, \n tensor shape {tensor.size()}, 10 calibration samples")
             
-            print(f"Plotting {observer.stage_id}:{observer.block_position}:{observer.layer_position}:{observer.weight_norm_or_act} with tensor size {tensor.size()}")
+            print(f"Plotting {observer.stage_id}:{observer.block_position}:{observer.layer_position}:{observer.weight_norm_or_act} with tensor size {tensor.size()}, numel = {tensor.numel()}")
+            sizes[f"{observer.stage_id}:{observer.block_position}:{observer.layer_position}:{observer.weight_norm_or_act}:{observer.block_name}"] = sci_num = format(tensor.numel(), '.2e')
 
             # plot mean and standard deviation
             mean = torch.mean(tensor).item()
@@ -611,7 +612,7 @@ class EfficientViTSam(nn.Module):
             ax.set_xlabel("Weight value")
             ax.set_ylabel(f"Relative Frequency of pre-trained weights" if observer.weight_norm_or_act == 'weight' else "Relative Frequency after calibration")
             fig.tight_layout()
-            plt.savefig(f'./plots//histograms/histogram_{observer.stage_id}:{observer.block_position}:{observer.layer_position}_{observer.weight_norm_or_act}.png')
+            plt.savefig(f'./plots//histograms/histogram_{observer.stage_id}:{observer.block_position}:{observer.layer_position}_{observer.block_name}_{observer.weight_norm_or_act}.png')
             plt.close()
 
     def plot_box_plot_of_observer(self, observer: BaseObserver):
@@ -646,7 +647,7 @@ class EfficientViTSam(nn.Module):
 
             # Create boxplot
             plt.boxplot(tensor_2d, vert=True, patch_artist=True)
-            plt.title(f"Distribution of {observer.weight_norm_or_act} of {observer.stage_id}:{observer.block_position}:{observer.layer_position} - {observer.block_name}, \n tensor shape {tensor.size()}, 25 calibration samples")
+            plt.title(f"Distribution of {observer.weight_norm_or_act} of {observer.stage_id}:{observer.block_position}:{observer.layer_position} - {observer.block_name}, \n tensor shape {tensor.size()}, 10 calibration samples")
             plt.xlabel("Channel number (output) - limited to the 16 with the largest outliers")
             plt.ylabel(f"Relative Frequency of pre-trained weights" if observer.weight_norm_or_act == 'weight' else "Relative Frequency after calibration")
 
@@ -654,15 +655,23 @@ class EfficientViTSam(nn.Module):
             plt.close()
 
     def plot_distributions_of_image_encoder(self):
+        sizes_w = {}
+        sizes_a = {}
         for m in self.image_encoder.modules():
             if type(m) in [QConvLayer, QConvLayerV2]:
                 if hasattr(m, 'weight_observer'):
-                    self.plot_histogram_of_observer(m.weight_observer)
-                    self.plot_box_plot_of_observer(m.weight_observer)
+                    self.plot_histogram_of_observer(m.weight_observer, sizes_w)
+                    #self.plot_box_plot_of_observer(m.weight_observer)
 
                 if hasattr(m, 'act_observer'):
-                    self.plot_histogram_of_observer(m.act_observer)
-                    self.plot_box_plot_of_observer(m.act_observer)
+                    self.plot_histogram_of_observer(m.act_observer, sizes_a)
+                    #self.plot_box_plot_of_observer(m.act_observer)
+        print("size of weight tensors")
+        for key in sizes_w.keys():
+            print(key, sizes_w[key])
+        print("size of act tensors")
+        for key in sizes_a.keys():
+            print(key, sizes_a[key])
 
     def print_some_statistics(self):
         counter = 0
