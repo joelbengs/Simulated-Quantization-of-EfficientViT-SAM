@@ -72,10 +72,7 @@ class BaseObserver:
 
         # store all samples passing through since they are not static
         # the incoming tensor is a tensor.clone() and can therefore be moved to the cpu for concatenation
-        elif self.weight_norm_or_act == 'act':
+        elif self.weight_norm_or_act == 'act' or self.weight_norm_or_act == 'norm':
             self.stored_tensor = torch.cat((self.stored_tensor.to('cpu'), tensor.to('cpu')), dim=0)  # dim 0 to keep different channels seperate
-
-        elif self.weight_norm_or_act == 'norm':
-            raise NotImplementedError("store_tensor for norms not yet implemented")
         else:
-            raise NotImplementedError('observer only built for weight, act or norm operations')
+            raise NotImplementedError('BaseObserver: store_tensor only implemented for weight, act or norm operations')

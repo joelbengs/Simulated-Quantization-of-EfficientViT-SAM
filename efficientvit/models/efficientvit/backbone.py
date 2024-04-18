@@ -803,7 +803,7 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                 out_channels=out_channels,
                 stride=stride,
                 use_bias=(True, False) if fewer_norm else False,    # only true in the last two stages
-                norm=(None, norm) if fewer_norm else norm,          # only true in the last two stages - else norm gets converted to a tuple of lenght 3
+                norm=(None, norm) if fewer_norm else norm,          # only true in the last two stages - else norm gets converted to a tuple of lenght 2
                 act_func=(act_func, None),                          # blocks always end without an activation function
                 **kwargs, # config arguments
             )
@@ -814,7 +814,7 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                 stride=stride,
                 expand_ratio=expand_ratio,
                 use_bias=(True, False) if fewer_norm else False,    # only true in the last two stages
-                norm=(None, norm) if fewer_norm else norm,          # only true in the last two stages - else norm gets converted to a tuple of lenght 3
+                norm=(None, norm) if fewer_norm else norm,          # only true in the last two stages - else norm gets converted to a tuple of lenght 2
                 act_func=(act_func, None),                          # blocks always end without an activation function
                 **kwargs, # config arguments
             )

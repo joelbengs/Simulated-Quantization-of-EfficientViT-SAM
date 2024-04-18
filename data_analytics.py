@@ -31,14 +31,17 @@ if __name__ == "__main__":
     pd.set_option('display.max_rows', None)
 
     # Print data overview
-    selected_columns = ['model',
-                        'backbone_version',
-                        'all']
+    selected_columns = ['backbone_version',
+                        'number of quantized params']
     intersection_columns = [col for col in selected_columns if col in df.columns]
     selected_data = df[intersection_columns]
+    # Format 'number of quantized params' with thousands separator
+    if 'number of quantized params' in selected_data.columns:
+        selected_data['number of quantized params'] = selected_data['number of quantized params'].apply(lambda x: '{:,}'.format(int(x)))
+
     print("data analytics script is working with the following data:")
     print(df.columns)
-    print(selected_data)
+    print(selected_data.to_string(index=False))
 
     ################################
     ###       Experiment 5       ###
