@@ -4,7 +4,10 @@ import numpy as np
 import pickle
 import os
 import matplotlib.pyplot as plt
+from adjustText import adjust_text
 from configs.quant_backbones_zoo import REGISTERED_BACKBONE_DESCRIPTIONS
+from configs.quant_backbones_zoo import SIMPLE_REGISTERED_BACKBONE_DESCRIPTIONS
+
 
 def read_pickle_to_dataframe(file_path, file_name) -> pd.DataFrame:
         file_name = os.path.basename(file_name)
@@ -25,6 +28,8 @@ if __name__ == "__main__":
     # load the data from storage
     df, _ = read_pickle_to_dataframe(args.pickle_file_path, args.pickle_file_name)
 
+    pd.set_option('display.max_rows', None)
+
     # Print data overview
     selected_columns = ['model',
                         'backbone_version',
@@ -39,23 +44,52 @@ if __name__ == "__main__":
     ###       Experiment 5       ###
     ################################
 
-    def plotE5(df, title: str, xlabel: str, name: str, rotate=False, zoom=False):
-        fig, ax = plt.subplots(figsize=(25,7))
-        ax.plot(df['backbone_version'], df['all'])
+    ''' Function that plots blockwise and layerwise benchmarking '''
+    def plotE5(df, title: str, xlabel: str, name: str, layerwise=False, rotate=False, zoom=False):
+        baseline_value=78.509
+        zoom_lower_limit=77
+        zoom_upper_limit=79
+        texts = []
 
+        fig, ax = plt.subplots(figsize=(25,5))
+        if zoom:
+            # Create a color array that holds the color for each dot
+            colors = df['all'].apply(lambda y: 'red' if y < zoom_lower_limit else 'blue')
+            # Create a new column 'adjusted_all' that holds the adjusted y-values
+            df['adjusted_all'] = df['all'].apply(lambda y: zoom_lower_limit + 0.1 if y < zoom_lower_limit else y)
+            # Use scatter to draw dots with the adjusted y-values and colors
+            ax.scatter(df['backbone_version'], df['adjusted_all'], c=colors)
+        else:
+            ax.plot(df['backbone_version'], df['all'])
+
+
+        if layerwise:
+            # Add description to each data point where 'all' score is substantially lower than baseline
+            for i, val in df.iterrows(): # index and row data
+                if zoom:
+                    if val['all'] < baseline_value-0.1:
+                        # using adjustText library to avoid overlapping text
+                        texts.append(ax.text(val['backbone_version'], val['adjusted_all'], f"{SIMPLE_REGISTERED_BACKBONE_DESCRIPTIONS[val['backbone_version']]}"))
+                else:
+                    if val['all'] < baseline_value-0.5:
+                        ax.text(val['backbone_version'], val['all'] - 1, f"{SIMPLE_REGISTERED_BACKBONE_DESCRIPTIONS[val['backbone_version']]}")
+            if zoom:
+                adjust_text(texts)  # adjust text to minimize overlaps
+
+            
         # vertical lines at each x mark
         for x in df['backbone_version']:
             ax.axvline(x, color='lightgray', linestyle='dotted')
-        baseline_value=78.509
         ax.axhline(baseline_value, color='red', linestyle='dotted')
         ax.text(0, baseline_value - 0.1 if zoom else baseline_value - 1, 'Baseline', va='top', ha="right")
+
 
         ax.set_xlabel(xlabel)
         ax.set_ylabel('Ground truth box prompt "all" score (higher is better)')
         if rotate:
             plt.xticks(rotation=70)
         if zoom:
-            ax.set_ylim([77,79])
+            ax.set_ylim([zoom_lower_limit,zoom_upper_limit])
 
         plt.suptitle(title)
         plt.savefig(f'./plots/graphs/{name}.png', bbox_inches='tight')
@@ -84,79 +118,32 @@ if __name__ == "__main__":
     plotE5(df_block,
            title='Block-wise analysis of weight quantization to INT8 of EfficientViT-SAM L0 image encoder',
             xlabel='L0 base model with only one block quantized. All layers of the block are quantized',
-            name='E5_block',
+            name=f'{args.pickle_file_name}_block',
             )
     
     plotE5(df_layer,
            title='Layer-wise analysis of weight quantization to INT8 of EfficientViT-SAM L0 image encoder',
            xlabel='L0 base model with only one layer quantized. Naming scheme is stage:block:layer',
-           name='E5_layer',
+           name=f'{args.pickle_file_name}_layer',
+            layerwise=True,
            rotate=True,
            )
     
     plotE5(df_block,
            title='Block-wise analysis of weight quantization to INT8 of EfficientViT-SAM L0 image encoder',
             xlabel='L0 base model with only one block quantized. All layers of the block are quantized',
-            name='E5_block_zoom',
+            name=f'{args.pickle_file_name}_block_zoom',
             zoom=True,
             )
     
     plotE5(df_layer,
            title='Layer-wise analysis of weight quantization to INT8 of EfficientViT-SAM L0 image encoder',
            xlabel='L0 base model with only one layer quantized. Naming scheme is stage:block:layer',
-           name='E5_layer_zoom',
+           name=f'{args.pickle_file_name}_layer_zoom',
+           layerwise=True,
            rotate=True,
            zoom=True,
            )
-
-    
-
-    #df_layer_granularity = df[~df['backbone_version'].str.endswith('x')]
-    #df_block_granularity['backbone_version'] = df_block_granularity['backbone_version'].str.replace(' x', '')
-    #df_layer_granularity['backbone_version'] = df_layer_granularity['backbone_version'].str.replace(':', '\nlayer ')
-
-
-    ''' block-wise '''
-    '''
-    fig, ax = plt.subplots(figsize=(20,5))
-    ax.plot(df_block_granularity['backbone_version'], df_block_granularity['all'])
-
-    # vertical lines at each x mark
-    for x in df_block_granularity['backbone_version']:
-        ax.axvline(x, color='lightgray', linestyle='dotted')
-    # baseline
-    ax.axhline(78.509, color='lightgray', linestyle='dotted')
-
-    ax.set_xlabel('L0 base model with only one block quantized. All layers of the block are quantized')
-    ax.set_ylabel('Ground truth box prompt "all" score (higher is better)')
-    #ax.set_ylim([45,85])
-    #plt.xticks(rotation=70)
-    
-    plt.suptitle('Experiment 5, block-wise analysis of quantization of EfficientViT-SAM L0 image encoder')
-    plt.savefig(f'./plots/E5_block.png', bbox_inches='tight')
-    plt.close()
-    '''
-    ''' layer-wise '''
-    '''
-    fig, ax = plt.subplots(figsize=(30,5))
-    ax.plot(df_layer_granularity['backbone_version'], df_layer_granularity['all'])
-
-    # vertical lines at each x mark
-    for x in df_layer_granularity['backbone_version']:
-        ax.axvline(x, color='black', linestyle='dotted', linewidth=0.25)
-    
-    # baseline
-    ax.axhline(78.509, color='lightgray', linestyle='dotted')
-
-    ax.set_xlabel('L0 model with only one layer quantized, identified as "stage:block:layer"')
-    ax.set_ylabel('Ground truth box prompt "all" score (higher is better)')
-    #ax.set_ylim([75,80])
-    #plt.xticks(rotation=70)
-    
-    plt.suptitle(f'Experiment 5, layer-wise analysis of quantization of EfficientViT-SAM L0 image encoder')
-    plt.savefig(f'./plots/E5_layer.png', bbox_inches='tight')
-    plt.close() 
-    '''
 
     ################################
     ###       Experiment 4       ###

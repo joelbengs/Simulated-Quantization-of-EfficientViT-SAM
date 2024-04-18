@@ -137,8 +137,6 @@ def run_box(efficientvit_sam, dataloader, local_rank):
     output = []
     for i, data in enumerate(tqdm(dataloader, disable=local_rank != 0)):        # for each batch of images
         data = data[0]                                                          # fetch the images?
-        if i == 10:
-            break
         sam_image = np.array(Image.open(data["image_path"]).convert("RGB"))     # convert ot RGB image
         predictor.set_image(sam_image)                                          # send image to predictor
         anns = data["anns"]                                                     # fetch annotations for the batch
@@ -625,8 +623,6 @@ if __name__ == "__main__":
 
     else:
         raise NotImplementedError()
-
-
 
     # evaluation - only done my the master process, not other parallell processes
     if local_rank == 0:

@@ -77,8 +77,6 @@ backbone_versions=(
 )
 
 backbone_versions=(
-L0:-:-:-
-L0:x:x:x
 L0:stage0:0:x
 L0:stage0:1:x
 L0:stage1:0:x
@@ -138,24 +136,28 @@ L0:stage4:1:2
 L0:stage4:1:3
 L0:stage4:1:4
 L0:stage4:1:5
+L0:stage4:1:6
 L0:stage4:2:0
 L0:stage4:2:1
 L0:stage4:2:2
 L0:stage4:2:3
 L0:stage4:2:4
 L0:stage4:2:5
+L0:stage4:2:6
 L0:stage4:3:0
 L0:stage4:3:1
 L0:stage4:3:2
 L0:stage4:3:3
 L0:stage4:3:4
 L0:stage4:3:5
+L0:stage4:3:6
 L0:stage4:4:0
 L0:stage4:4:1
 L0:stage4:4:2
 L0:stage4:4:3
 L0:stage4:4:4
 L0:stage4:4:5
+L0:stage4:4:6
 L0:neck:0:0
 L0:neck:1:0
 L0:neck:2:0
@@ -171,7 +173,7 @@ L0:neck:7:0
 )
 
 backbone_versions=(
-L0:-:-:-
+L0:x:x:x
 )
 
 echo "--------- STARTING SCRIPT ---------}"
@@ -190,14 +192,13 @@ do
     --model $model \
     --prompt_type $prompt_type \
     --backbone_version $bbv \
-    --limit_iterations 100 \
+    --limit_iterations 10 \
     --quantize_W \
-    --plot_distributions \
-    --suppress_print \
     --script_name $(basename $0 .sh) # removes the .sh extension and the directory scripts/
-    # --quantize_method_W $qmw \
-    #--plot_distributions \
     # --export_dataframe \
+    # --suppress_print \
+    # --plot_distributions \
+    # --quantize_method_W $qmw \
     # --quantize_A \
     # --print_torchinfo \
     # --quantize_N \
@@ -205,12 +206,11 @@ do
     # --quantize_method_N $qmn \
     # --observer-method_A $oma \
     # --observer-method_N $omn \
-    # --suppress_print \
   done
 done
 
 # Execute view_results.py
-# python view_pickle_file.py --pickle_file_path results --script_name $(basename $0 .sh) --view_all_columns
+python view_pickle_file.py --pickle_file_path results --script_name $(basename $0 .sh) --view_all_columns
 
 echo "Finished $prompt_type --quanitze evaluation of models: ${models[*]}"
 # make it executable with the command chmod +x scriptname.sh

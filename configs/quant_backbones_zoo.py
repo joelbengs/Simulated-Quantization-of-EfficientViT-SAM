@@ -4,13 +4,13 @@
 # Creates backbones for layerwise investigation of L0
 def create_simple_backbone_versions_L0():
     stages_L0 = ["stage0", "stage1", "stage2", "stage3", "stage4", "neck"]
-    block_depth_per_stage_L0 = [1,1,1,4,4,7] # the neck actually has 8 blocks, but subtract 1 to compensate for the lack of extra bottleneck block
+    block_depth_per_stage_L0 = [2,2,2,5,5,8] # including bottleneck blocks
     layer_depth_per_block_L0 = [
         [1,2], # stage0 has 1 input conv and 1 resblock, which has 2 Convs
         [2,2], # stage1 has 1 + 1 FusedMBConv, they have 2 convs each
         [2,2], # stage2 has 1 + 1 FusedMBConv, they have 2 convs each
         [3,3,3,3,3], # stage3 has 1 + 4 MBConv, they have 3 convs each
-        [3,6,6,6,6], # stage4 has 1 MBConv (which has 3 convs)+ 4 efficentViT Modules, which have 6 conv layers each (counting the trailing MBconv)
+        [3,7,7,7,7], # stage4 has 1 MBConv (which has 3 convs)+ 4 efficentViT Modules, which have 67 conv layers each (counting the trailing MBconv which has 3). Note that multi-layer scaling has 2 layers!
         [1,1,1,2,2,2,2,1]  # the neck has 3 blocks of conv+upsample, one learnable layer each. It has 4 FusedMBconvs, and 1 output conv
     ]
 
@@ -30,7 +30,7 @@ def create_simple_backbone_versions_L0():
 
     # block granularity:
     for s, block_depth in zip(stages_L0, block_depth_per_stage_L0):
-        for bd in range(block_depth+1): # +1 to include the bottleneck block of each stage (the nech has none, which is compensated for above)
+        for bd in range(block_depth):
             key = f"L0:{s}:{bd}:x"
             value = {
                 'stages': [s],
@@ -40,7 +40,7 @@ def create_simple_backbone_versions_L0():
 
     # layer granularity
     for s, block_depth, layer_depth in zip(stages_L0, block_depth_per_stage_L0, layer_depth_per_block_L0):
-        for bd in range(block_depth+1): # +1 to include the bottleneck of each stage
+        for bd in range(block_depth):
             for ld in range(layer_depth[bd]):
                 key = f"L0:{s}:{bd}:{ld}"
                 value = {
@@ -403,35 +403,75 @@ REGISTERED_BACKBONE_DESCRIPTIONS = {
     "9": "Soft quantization - one BLOCK TYPE at a time, plus save bottleneck if in those block types",
 }
 
-### Format: Model:Stage:Block:Layer
-'''SIMPLE_REGISTERED_BACKBONE_VERSIONS = {
-    'L0:x:x:x': {
-        'stages': ["unknown", "stage0", "stage1", "stage2", "stage3", "stage4", "stage5", "neck"],
-        'block_positions': [0,1,2,3,4,5,6,7,8,9],
-    },
-    'L0:stage0:0:x': {'block_positions': [0], 'stages': ['stage0']},
-    'L0:stage0:1:x': {'block_positions': [1], 'stages': ['stage0']},
-    'L0:stage1:0:x': {'block_positions': [0], 'stages': ['stage1']},
-    'L0:stage1:1:x': {'block_positions': [1], 'stages': ['stage1']},
-    'L0:stage2:0:x': {'block_positions': [0], 'stages': ['stage2']},
-    'L0:stage2:1:x': {'block_positions': [1], 'stages': ['stage2']},
-    'L0:stage3:0:x': {'block_positions': [0], 'stages': ['stage3']},
-    'L0:stage3:2:x': {'block_positions': [2], 'stages': ['stage3']},
-    'L0:stage3:3:x': {'block_positions': [3], 'stages': ['stage3']},
-    'L0:stage3:4:x': {'block_positions': [4], 'stages': ['stage3']},
-    'L0:stage4:0:x': {'block_positions': [0], 'stages': ['stage4']},
-    'L0:stage4:1:x': {'block_positions': [1], 'stages': ['stage4']},
-    'L0:stage4:2:x': {'block_positions': [2], 'stages': ['stage4']},
-    'L0:stage4:3:x': {'block_positions': [3], 'stages': ['stage4']},
-    'L0:stage4:4:x': {'block_positions': [4], 'stages': ['stage4']},
-    'L0:neck:0:x': {'block_positions': [0], 'stages': ['neck']},
-    'L0:neck:1:x': {'block_positions': [1], 'stages': ['neck']},
-    'L0:neck:2:x': {'block_positions': [2], 'stages': ['neck']},
-    'L0:neck:3:x': {'block_positions': [3], 'stages': ['neck']},
-    'L0:neck:4:x': {'block_positions': [4], 'stages': ['neck']},
-    'L0:neck:5:x': {'block_positions': [5], 'stages': ['neck']},
-    'L0:neck:6:x': {'block_positions': [6], 'stages': ['neck']},
-    'L0:neck:7:x': {'block_positions': [7], 'stages': ['neck']},
-    'L0:neck:8:x': {'block_positions': [8], 'stages': ['neck']},
+SIMPLE_REGISTERED_BACKBONE_DESCRIPTIONS = {
+    ### Just t''o provide types
+    '0:0:0': 'Input Conv (bottleneck)',
+    '0:1:0': 'ResBlock conv',
+    '0:1:1': 'Resblock conv no act',
+    '1:0:0': 'FMBConv 3x3 (bottleneck)',
+    '1:0:1': 'FMBConv 1x1 no act (bottleneck)',
+    '1:1:0': 'FMBConv 3x3',
+    '1:1:1': 'FMBConv 1x1 no act',
+    '2:0:0': 'FMBConv 3x3 (bottleneck)',
+    '2:0:1': 'FMBConv 1x1 no act (bottleneck)',
+    '2:1:0': 'FMBConv 3x3',
+    '2:1:1': 'FMBConv 1x1 no act',
+    '3:0:0': 'MBConv 1x1 no norm (bottleneck)',
+    '3:0:1': 'MBConv DWconv no norm (bottleneck)',
+    '3:0:2': 'MBConv 1x1 no act (bottleneck)',
+    '3:1:0': 'MBConv 1x1 no norm',
+    '3:1:1': 'MBConv DWconv no norm',
+    '3:1:2': 'MBConv 1x1 no act',
+    '3:2:0': 'MBConv 1x1 no norm',
+    '3:2:1': 'MBConv DWconv no norm',
+    '3:2:2': 'MBConv 1x1 no act',
+    '3:3:0': 'MBConv 1x1 no norm',
+    '3:3:1': 'MBConv DWconv no norm',
+    '3:3:2': 'MBConv 1x1 no act',
+    '3:4:0': 'MBConv 1x1 no norm',
+    '3:4:1': 'MBConv DWconv no norm',
+    '3:4:2': 'MBConv 1x1 no act',
+    '4:0:0': 'MBConv 1x1 no norm (bottleneck)',
+    '4:0:1': 'MBConv DWconv no norm (bottleneck)',
+    '4:0:2': 'MBConv 1x1 no act (bottleneck)',
+    '4:1:0': 'QKV-Conv 1x1',
+    '4:1:1': 'Scaling Conv 5x5, no norm, no act',
+    '4:1:2': 'Scaling Conv 1x1, no norm, no act',
+    '4:1:3': 'Projection conv 1x1',
+    '4:1:4': 'MBConv 1x1 no norm',
+    '4:1:5': 'MBConv DWconv no norm',
+    '4:1:6': 'MBConv 1x1 no act',
+    '4:2:0': 'QKV-Conv 1x1',
+    '4:2:1': 'Scaling Conv 5x5, no norm, no act',
+    '4:2:2': 'Scaling Conv 1x1, no norm, no act',
+    '4:2:3': 'Projection conv 1x1',
+    '4:2:4': 'MBConv 1x1 no norm',
+    '4:2:5': 'MBConv DWconv no norm',
+    '4:2:6': 'MBConv 1x1 no act',
+    '4:3:0': 'QKV-Conv 1x1',
+    '4:3:1': 'Scaling Conv 5x5, no norm, no act',
+    '4:3:2': 'Scaling Conv 1x1, no norm, no act',
+    '4:3:3': 'Projection conv 1x1',
+    '4:3:4': 'MBConv 1x1 no norm',
+    '4:3:5': 'MBConv DWconv no norm',
+    '4:3:6': 'MBConv 1x1 no act',
+    '4:4:0': 'QKV-Conv 1x1',
+    '4:4:1': 'Scaling Conv 5x5, no norm, no act',
+    '4:4:2': 'Scaling Conv 1x1, no norm, no act',
+    '4:4:3': 'Projection conv 1x1',
+    '4:4:4': 'MBConv 1x1 no norm',
+    '4:4:5': 'MBConv DWconv no norm',
+    '4:4:6': 'MBConv 1x1 no act',
+    'neck:0:0': 'Conv + upsample from 512, no act',
+    'neck:1:0': 'Conv + upsample from 256, no act',
+    'neck:2:0': 'Conv + upsample from 128, no act',
+    'neck:3:0': 'FMBConv 3x3',
+    'neck:3:1': 'FMBConv 1x1 no act',
+    'neck:4:0': 'FMBConv 3x3',
+    'neck:4:1': 'FMBConv 1x1 no act',
+    'neck:5:0': 'FMBConv 3x3',
+    'neck:5:1': 'FMBConv 1x1 no act',
+    'neck:6:0': 'FMBConv 3x3',
+    'neck:6:1': 'FMBConv 1x1 no act',
+    'neck:7:0': 'Conv 1x1, no act',
 }
-'''
