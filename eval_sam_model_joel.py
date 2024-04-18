@@ -671,7 +671,7 @@ if __name__ == "__main__":
         # Use torchinfo.summary to print the model. Depth controls granularity of printout - all params are counted anyhow
         summary(
             efficientvit_sam.image_encoder, 
-            depth=3,
+            depth=5,
             col_names = ("output_size", "num_params", "mult_adds"),
             input_size=(1, 3, 2014, 512)
             )

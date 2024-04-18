@@ -14,4 +14,3 @@ coco
 imagenet
 results/
 wandb/
-plots/boxplots

@@ -173,7 +173,7 @@ L0:neck:7:0
 )
 
 backbone_versions=(
-L0:x:x:x
+L0:-:-:-
 )
 
 echo "--------- STARTING SCRIPT ---------}"
@@ -194,7 +194,7 @@ do
     --backbone_version $bbv \
     --limit_iterations 10 \
     --quantize_W \
-    --print_torchinfo \
+    --suppress_print \
     --script_name $(basename $0 .sh) # removes the .sh extension and the directory scripts/
     # --export_dataframe \
     # --suppress_print \

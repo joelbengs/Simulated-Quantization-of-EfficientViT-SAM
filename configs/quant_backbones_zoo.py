@@ -475,3 +475,546 @@ SIMPLE_REGISTERED_BACKBONE_DESCRIPTIONS = {
     'neck:6:1': 'FMBConv 1x1 no act',
     'neck:7:0': 'Conv 1x1, no act',
 }
+
+
+'''
+'3:0:2': /image_encoder/backbone/stages.3/op_list.0/main/point_conv/conv/Conv
+'3:1:2': /image_encoder/backbone/stages.3/op_list.1/main/point_conv/conv/Conv
+'3:2:2': /image_encoder/backbone/stages.3/op_list.2/main/point_conv/conv/Conv
+'3:3:2': /image_encoder/backbone/stages.3/op_list.3/main/point_conv/conv/Conv
+'3:4:2': /image_encoder/backbone/stages.3/op_list.4/main/point_conv/conv/Conv
+
+'4:0:2': /image_encoder/backbone/stages.4/op_list.0/main/point_conv/conv/Conv
+'4:1:6': /image_encoder/backbone/stages.4/op_list.1/local_module/main/point_conv/conv/Conv
+'4:2:6': /image_encoder/backbone/stages.4/op_list.2/local_module/main/point_conv/conv/Conv
+'4:3:6': /image_encoder/backbone/stages.4/op_list.3/local_module/main/point_conv/conv/Conv
+'4:4:6': /image_encoder/backbone/stages.4/op_list.4/local_module/main/point_conv/conv/Conv
+
+NAME_DICTIONARY_L0= {
+    ### Name: Description, name in TRT, kernel shape, stride, dilation, input channels, putput channels
+    '0:0:0': {
+        'Input Conv (bottleneck)', 
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '0:1:0': {
+        'ResBlock conv',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '0:1:1': {
+        'Resblock conv no act',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '1:0:0': {
+        'FMBConv 3x3 (bottleneck)',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '1:0:1': {
+        'FMBConv 1x1 no act (bottleneck)',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '1:1:0': {
+        'FMBConv 3x3',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '1:1:1': {
+        'FMBConv 1x1 no act',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '2:0:0': {
+        'FMBConv 3x3 (bottleneck)',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '2:0:1': {
+        'FMBConv 1x1 no act (bottleneck)',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '2:1:0': {
+        'FMBConv 3x3',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '2:1:1': {
+        'FMBConv 1x1 no act',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '3:0:0': {
+        'MBConv 1x1 no norm (bottleneck)', 
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '3:0:1': {
+        'MBConv DWconv no norm (bottleneck)',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '3:0:2': {
+        'MBConv 1x1 no act (bottleneck)',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '3:1:0': {
+        'MBConv 1x1 no norm',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '3:1:1': {
+        'MBConv DWconv no norm',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '3:1:2': {
+        'MBConv 1x1 no act',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '3:2:0': {
+        'MBConv 1x1 no norm',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '3:2:1': {
+        'MBConv DWconv no norm',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '3:2:2': {
+        'MBConv 1x1 no act',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '3:3:0': {
+        'MBConv 1x1 no norm',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '3:3:1': {
+        'MBConv DWconv no norm',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '3:3:2': {
+        'MBConv 1x1 no act',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '3:4:0': {
+        'MBConv 1x1 no norm',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '3:4:1': {
+        'MBConv DWconv no norm',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '3:4:2': {
+        'MBConv 1x1 no act',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:0:0': {
+        'MBConv 1x1 no norm (bottleneck)',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:0:1': {
+        'MBConv DWconv no norm (bottleneck)',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:0:2': {
+        'MBConv 1x1 no act (bottleneck)',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:1:0': {
+        'QKV-Conv 1x1',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:1:1': {
+        'Scaling Conv 5x5, no norm, no act',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:1:2': {
+        'Scaling Conv 1x1, no norm, no act',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:1:3': {
+        'Projection conv 1x1',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:1:4': {
+        'MBConv 1x1 no norm',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:1:5': {
+        'MBConv DWconv no norm',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:1:6': {
+        'MBConv 1x1 no act',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:2:0': {
+        'QKV-Conv 1x1',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:2:1': {
+        'Scaling Conv 5x5, no norm, no act',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:2:2': {
+        'Scaling Conv 1x1, no norm, no act',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:2:3': {
+        'Projection conv 1x1',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:2:4': {
+        'MBConv 1x1 no norm',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:2:5': {
+        'MBConv DWconv no norm',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:2:6': {
+        'MBConv 1x1 no act',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:3:0': {
+        'QKV-Conv 1x1',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:3:1': {
+        'Scaling Conv 5x5, no norm, no act',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:3:2': {
+        'Scaling Conv 1x1, no norm, no act',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:3:3': {
+        'Projection conv 1x1',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:3:4': {
+        'MBConv 1x1 no norm',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:3:5': {
+        'MBConv DWconv no norm',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:3:6': {
+        'MBConv 1x1 no act',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:4:0': {
+        'QKV-Conv 1x1',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:4:1': {
+        'Scaling Conv 5x5, no norm, no act',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:4:2': {
+        'Scaling Conv 1x1, no norm, no act',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:4:3': {
+        'Projection conv 1x1',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:4:4': {
+        'MBConv 1x1 no norm',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:4:5': {
+        'MBConv DWconv no norm',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    '4:4:6': {
+        'MBConv 1x1 no act',
+        name,
+        input channels,
+        output channels,
+        kernel,
+        stride,
+        dilatopn
+        },
+    'neck:0:0': 'Conv + upsample from 512, no act',
+    'neck:1:0': 'Conv + upsample from 256, no act',
+    'neck:2:0': 'Conv + upsample from 128, no act',
+    'neck:3:0': 'FMBConv 3x3',
+    'neck:3:1': 'FMBConv 1x1 no act',
+    'neck:4:0': 'FMBConv 3x3',
+    'neck:4:1': 'FMBConv 1x1 no act',
+    'neck:5:0': 'FMBConv 3x3',
+    'neck:5:1': 'FMBConv 1x1 no act',
+    'neck:6:0': 'FMBConv 3x3',
+    'neck:6:1': 'FMBConv 1x1 no act',
+    'neck:7:0': 'Conv 1x1, no act',
+}
+'''
