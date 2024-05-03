@@ -482,7 +482,7 @@ class EfficientViTSam(nn.Module):
         return masks
     
     ######################################################################
-    #                 Toggles functions for quantization                 #
+    #       Toggles functions for quantization - early versions          #
     ######################################################################
 
     def toggle_calibrate_on(self):
@@ -508,12 +508,12 @@ class EfficientViTSam(nn.Module):
     def toggle_quant_on(self):
         for m in self.image_encoder.modules():
             if type(m) in [QConvLayer, QConvLayerV2]:
-                m.quant = True
+                m.quant_weights = True
 
     def toggle_quant_off(self):
         for m in self.image_encoder.modules():
             if type(m) in [QConvLayer, QConvLayerV2]:
-                m.quant = False
+                m.quant_weights = False
     
     def toggle_selective_calibrate_on(self, **kwargs):
         self.image_encoder.toggle_selective_attribute(attribute="calibrate", **kwargs,)
@@ -528,10 +528,14 @@ class EfficientViTSam(nn.Module):
         self.image_encoder.toggle_selective_attribute(attribute="last_calibrate", attribute_goal_state=False, **kwargs,)
 
     def toggle_selective_quant_on(self, **kwargs):
-        self.image_encoder.toggle_selective_attribute(attribute="quant", **kwargs,)
+        self.image_encoder.toggle_selective_attribute(attribute="quant_weights", **kwargs,)
 
     def toggle_selective_quant_off(self, **kwargs):
-        self.image_encoder.toggle_selective_attribute(attribute="quant", attribute_goal_state=False, **kwargs,)
+        self.image_encoder.toggle_selective_attribute(attribute="quant_weights", attribute_goal_state=False, **kwargs,)
+
+    ######################################################################
+    #       Toggles functions for quantization - later versions          #
+    ######################################################################
 
     ### Simple versions: expects other backbone formats
     def simple_toggle_selective_calibrate_on(self, **kwargs):
@@ -546,11 +550,17 @@ class EfficientViTSam(nn.Module):
     def simple_toggle_selective_last_calibrate_off(self, **kwargs):
         self.image_encoder.simple_toggle_selective_attribute(attribute="last_calibrate", attribute_goal_state=False, **kwargs,)
 
-    def simple_toggle_selective_quant_on(self, **kwargs):
-        self.image_encoder.simple_toggle_selective_attribute(attribute="quant", **kwargs,)
+    def simple_toggle_selective_quant_weights_on(self, **kwargs):
+        self.image_encoder.simple_toggle_selective_attribute(attribute="quant_weights", **kwargs,)
 
-    def simple_toggle_selective_quant_off(self, **kwargs):
-        self.image_encoder.simple_toggle_selective_attribute(attribute="quant", attribute_goal_state=False, **kwargs,)
+    def simple_toggle_selective_quant_weights_off(self, **kwargs):
+        self.image_encoder.simple_toggle_selective_attribute(attribute="quant_weights", attribute_goal_state=False, **kwargs,)
+
+    def simple_toggle_selective_quant_activations_on(self, **kwargs):
+        self.image_encoder.simple_toggle_selective_attribute(attribute="quant_activations", **kwargs,)
+
+    def simple_toggle_selective_quant_activations_off(self, **kwargs):
+        self.image_encoder.simple_toggle_selective_attribute(attribute="quant_activations", attribute_goal_state=False, **kwargs,)
 
     ### statistics
     def toggle_monitor_distributions_on(self, **kwargs):
@@ -568,7 +578,7 @@ class EfficientViTSam(nn.Module):
         unaffected = 0
         for m in self.image_encoder.modules():
             if type(m) in [QConvLayer, QConvLayerV2]:
-                if m.quant:
+                if m.quant_weights:
                     affected = affected + m.parameter_count()
                 else:
                     unaffected = unaffected + m.parameter_count()
@@ -578,7 +588,6 @@ class EfficientViTSam(nn.Module):
         for name, param in self.image_encoder.named_parameters():
             print("param name:", name)
             print("param.size():", param.size())
-
 
     def print_some_statistics(self):
         counter = 0

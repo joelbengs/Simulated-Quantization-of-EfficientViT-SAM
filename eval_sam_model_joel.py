@@ -708,8 +708,10 @@ if __name__ == "__main__":
             if not args.suppress_print:
                 print("Calibrating box...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
-            toggle_operation(efficientvit_sam, 'quant', 'on', args.backbone_version, args.suppress_print)
-    
+            if args.quantize_W:
+                toggle_operation(efficientvit_sam, 'quant_weights', 'on', args.backbone_version, args.suppress_print)
+            if args.quantize_A:
+                toggle_operation(efficientvit_sam, 'quant_activations', 'on', args.backbone_version, args.suppress_print)
         if args.plot_distributions and local_rank == 0:
             full_precision_distribution_analysis(efficientvit_sam)
         

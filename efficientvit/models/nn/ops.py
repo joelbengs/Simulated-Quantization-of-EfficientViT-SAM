@@ -620,7 +620,8 @@ class QConvLayer(nn.Module):
             norm="bn2d",
             act_func="relu",
             # custom arguments
-            quant=False,
+            quant_weights=False,
+            quant_activations=False,
             calibrate=False,
             last_calibrate=False,
             monitor_distributions=False,    # makes the observer monitor distributions
@@ -657,7 +658,8 @@ class QConvLayer(nn.Module):
         self.act = build_act(act_func)  # builds nn.Module if not None
 
         # Custom arguments
-        self.quant = quant
+        self.quant_weights = quant_weights
+        self.quant_activations = quant_activations
         self.calibrate = calibrate
         self.last_calibrate = last_calibrate
         self.monitor_distributions=monitor_distributions
@@ -719,17 +721,18 @@ class QConvLayer(nn.Module):
         if self.monitor_distributions:
             self.weight_observer.store_tensor(self.conv.weight)
 
-        # calibrate
+        # calibrate weights
         if self.calibrate:
             self.weight_quantizer.observer.update(self.conv.weight) # for all batches of calibration data: update statistics
             if self.last_calibrate:                          # after the last batch, fetch S and Z of the quantizer
-                self.weight_quantizer.update_quantization_params(x)
+                self.weight_quantizer.update_quantization_params()
+        
         # dropout
         if self.dropout is not None:
             x = self.dropout(x)
 
-        # quantization
-        if self.quant:
+        # quantization weights
+        if self.quant_weights:
             # quant + dequant the weights
             w = self.weight_quantizer(self.conv.weight)
             # passing the parameters from self.conv to F.conv2d
@@ -746,12 +749,19 @@ class QConvLayer(nn.Module):
         # activation
         if self.act:
             x = self.act(x)
-            if self.monitor_distributions:
+            if self.calibrate:
+                self.act_quantizer.observer.update(x)
+                if self.last_calibrate:
+                    self.act_quantizer.update_quantization_params()
+            if self.quant_activations:
+                x = self.act_quantizer(x)
+            if self.monitor_distributions: # make sure quant_activations is turned off when monitoring FP32 distributions
                 self.act_observer.store_tensor(x.clone()) # to freely move it between devices in analysis
 
         return x
     
     def parameter_count(self):
+        # omitting the parameters of the norm layer
         num_weights = self.conv.weight.numel()
         num_biases = self.conv.bias.numel() if self.conv.bias is not None else 0
         return num_weights + num_biases
@@ -771,7 +781,8 @@ class QConvLayerV2(nn.Conv2d):
             norm="bn2d",
             act_func="relu",
             # custom arguments
-            quant=False,
+            quant_weights=False,
+            quant_activations=False,
             calibrate=False,
             last_calibrate=False,
             monitor_distributions=False,    # makes the observer monitor distributions
@@ -817,7 +828,8 @@ class QConvLayerV2(nn.Conv2d):
         self.act = build_act(act_func)  # builds nn.Module if not None
 
         # Custom arguments
-        self.quant = quant
+        self.quant_weights = quant_weights
+        self.quant_activations = quant_activations
         self.calibrate = calibrate
         self.last_calibrate = last_calibrate
         self.monitor_distributions=monitor_distributions
@@ -875,10 +887,11 @@ class QConvLayerV2(nn.Conv2d):
         return observer, quantizer
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # monitor weight distributions (static)
         if self.monitor_distributions:
             self.weight_quantizer.observer.store_tensor(self.weight)
 
-        # calibrate
+        # calibrate weights
         if self.calibrate:
             self.weight_quantizer.observer.update(self.weight) # for all batches of calibration data: update statistics
             if self.last_calibrate:                     # after the last batch, fetch S and Z of the quantizer
@@ -889,7 +902,7 @@ class QConvLayerV2(nn.Conv2d):
             x = self.dropout(x)
 
         # quantization
-        if self.quant:
+        if self.quant_weights:
             # quant + dequant the weights
             w = self.weight_quantizer(self.weight)
             # passing the parameters from self.conv to F.conv2d
@@ -906,6 +919,12 @@ class QConvLayerV2(nn.Conv2d):
         # activation
         if self.act:
             x = self.act(x)
+            if self.calibrate:
+                self.act_quantizer.observer.update(x)
+                if self.last_calibrate:
+                    self.act_quantizer.update_quantization_params()
+            if self.quant_activations:
+                x = self.act_quantizer(x)
             if self.monitor_distributions:
                 self.act_observer.store_tensor(x.clone()) # to freely move it between devices in analysis
 
@@ -917,6 +936,7 @@ class QConvLayerV2(nn.Conv2d):
         return num_weights + num_biases
 
 
+# Not updated since not in use
 class QLinearLayer(nn.Module):
     def __init__(
         self,
@@ -1093,6 +1113,7 @@ class QMBConv(nn.Module):
             layer_position=layer_positions[1],
             **kwargs, # config arguments
         )
+        '''
         self.point_conv = QConvLayer(
             mid_channels,
             out_channels,
@@ -1102,17 +1123,17 @@ class QMBConv(nn.Module):
             use_bias=use_bias[2],
             layer_position=layer_positions[2],
             **kwargs, # config arguments
-        )
+        )'''
 
         # Used for testing a model with this layer in FP32
-        '''        self.point_conv = ConvLayer(
+        self.point_conv = ConvLayer(
             mid_channels,
             out_channels,
             1,
             norm=norm[2],
             act_func=act_func[2],
             use_bias=use_bias[2],
-        )'''
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.inverted_conv(x)
