@@ -126,9 +126,9 @@ L0:neck:6:1
 L0:neck:7:0
 )
 
-backbone_versions=(
-L0:x:x:x
-)
+#backbone_versions=(
+#L0:x:x:x
+#)
 
 echo "--------- STARTING SCRIPT ---------}"
 for bbv in "${backbone_versions[@]}"
