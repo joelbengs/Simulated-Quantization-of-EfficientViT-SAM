@@ -41,11 +41,21 @@ class BitType:
             self.name += 'int'
         self.name += '{}'.format(self.bits)
 
+    def to_dict(self):
+        return {
+            'bits': self.bits,
+            'signed': self.signed,
+            'name': self.name,
+            'upper_bound': self.upper_bound,
+            'lower_bound': self.lower_bound,
+            'range': self.range
+        }
 
 BIT_TYPE_LIST = [
     BitType(4, False, 'uint4'),
     BitType(8, True, 'int8'),
-    BitType(8, False, 'uint8')
+    BitType(8, False, 'uint8'),
+    BitType(16, True, 'int16'), #custom. Not sure about validity
 ]
 
 BIT_TYPE_DICT = {bit_type.name: bit_type for bit_type in BIT_TYPE_LIST}

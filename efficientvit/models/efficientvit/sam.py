@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.transforms as transforms
+from efficientvit.models.ptq.observer.base import BaseObserver
 from segment_anything import SamAutomaticMaskGenerator
 from segment_anything.modeling import MaskDecoder, PromptEncoder, TwoWayTransformer
 from segment_anything.modeling.mask_decoder import MaskDecoder
@@ -16,6 +17,7 @@ from segment_anything.modeling.prompt_encoder import PromptEncoder
 from segment_anything.utils.amg import build_all_layer_point_grids
 from segment_anything.utils.transforms import ResizeLongestSide
 from torchvision.transforms.functional import resize, to_pil_image
+import matplotlib.pyplot as plt
 
 from efficientvit.models.efficientvit.backbone import EfficientViTBackbone, EfficientViTLargeBackbone
 from efficientvit.models.nn import (
@@ -32,9 +34,7 @@ from efficientvit.models.nn import (
     ## quantized basic layers ##
     QConvLayer,
     QConvLayerV2,
-    QUpSampleLayer,
     QLinearLayer,
-    QIdentityLayer,
     ## quantized basic blocks ##
     QDSConv,
     QMBConv,
@@ -208,7 +208,7 @@ class QSamNeck(DAGBlock):
         config=None,
     ):
         inputs = {}
-        for fid, in_channel in zip(fid_list, in_channel_list):
+        for i, (fid, in_channel) in enumerate(zip(fid_list, in_channel_list), start=0):
             inputs[fid] = OpSequential(
                 [
                     QConvLayer(
@@ -223,6 +223,9 @@ class QSamNeck(DAGBlock):
                         observer_str=config.OBSERVER_W,
                         quantizer_str=config.QUANTIZER_W,
                         stage_id='neck',
+                        block_position = i,
+                        layer_position = 0,
+                        block_name="independent",
                         block_is_bottleneck=True, #no residual connection exists
                         block_is_neck=True,
                         ),
@@ -231,8 +234,8 @@ class QSamNeck(DAGBlock):
             )
 
         middle = []
-        for _ in range(head_depth):
-            if middle_op == "mb":
+        for i in range(head_depth):
+            if middle_op == "mb": # not used by any model
                 block = QMBConv(
                     head_width,
                     head_width,
@@ -245,10 +248,11 @@ class QSamNeck(DAGBlock):
                     observer_str=config.OBSERVER_W,
                     quantizer_str=config.QUANTIZER_W,
                     stage_id='neck',
+                    block_position=i+1+len(fid_list),
                     block_name=middle_op,
                     block_is_neck=True,
                 )
-            elif middle_op == "fmb":
+            elif middle_op == "fmb": # used by all models
                 block = QFusedMBConv(
                     head_width,
                     head_width,
@@ -261,10 +265,11 @@ class QSamNeck(DAGBlock):
                     observer_str=config.OBSERVER_W,
                     quantizer_str=config.QUANTIZER_W,
                     stage_id='neck',
+                    block_position=i+len(fid_list),
                     block_name=middle_op,
                     block_is_neck=True,
                 )
-            elif middle_op == "res":
+            elif middle_op == "res": # not used by any model
                 block = QResBlock(
                     head_width,
                     head_width,
@@ -277,6 +282,7 @@ class QSamNeck(DAGBlock):
                     observer_str=config.OBSERVER_W,
                     quantizer_str=config.QUANTIZER_W,
                     stage_id='neck',
+                    block_position=i+1+len(fid_list),
                     block_name=middle_op,
                     block_is_neck=True,
                 )
@@ -301,6 +307,9 @@ class QSamNeck(DAGBlock):
                         observer_str=config.OBSERVER_W,
                         quantizer_str=config.QUANTIZER_W,
                         stage_id='neck',
+                        block_position=len(fid_list)+head_depth,
+                        layer_position=0,
+                        block_name='independent',
                         block_is_bottleneck=True, #no residual connection exists
                         block_is_neck=True,
                     ),
@@ -336,7 +345,9 @@ class EfficientViTSamImageEncoder(nn.Module):
             attribute: str,
             attribute_goal_state=True,
             printout=False,
-            stages=["unknown", "stage0", "stage1", "stage2", "stage4", "stage5"], 
+            stages=["unknown", "stage0", "stage1", "stage2", "stage4", "stage5", "neck"],
+            block_position= [0,1,2,3,4,5,6,7,8,9],
+            layer_position= [0,1,2,3,4,5,6,7,8,9],
             block_names=['independent', "res", "mb", "fmb", "att", "att@3", "att@5"], # could be more scales, must build a general solution for any scale
             spare_bottlenecks=False,
             spare_attention_qkv=False,
@@ -348,7 +359,7 @@ class EfficientViTSamImageEncoder(nn.Module):
             count_all = count_all + 1
             if type(m) in [QConvLayer, QConvLayerV2]:
                 count_candidates = count_candidates + 1
-                # TODO: Make these set the attribute to False to protect human logic error - maybe?
+                # TODO: Make these set the attribute to False to protect human logic error
                 if m.block_is_bottleneck and spare_bottlenecks:
                     if printout: print(f"spared bottleneck: {m.block_name} in {m.stage_id}", f"                module {count_all} of type {type(m)}")
                     continue # skips to the next iteration
@@ -385,6 +396,43 @@ class EfficientViTSamImageEncoder(nn.Module):
             if spare_attention_projection:
                 spared_parts.append('attention projection')
             print(f"Spared parts: {', '.join(spared_parts)}" if spared_parts else "Did not spare any parts.")
+
+    def simple_toggle_selective_attribute(
+            self, 
+            attribute: str,
+            attribute_goal_state=True,
+            printout=False,
+            stages=None, #required: format [string, string, string]
+            block_positions=None, #required: format [int, int, int]
+            layer_positions=None, #optional: format [int, int, int]
+            ):
+
+        if stages is None or block_positions is None:
+            raise NotImplementedError('The backbone format is incompatible with the expected format: stages and block_position must be specified')
+
+        count_all = count_candidates = count_affected = 0
+        for m in self.modules():
+            count_all = count_all + 1
+            if type(m) in [QConvLayer, QConvLayerV2]:
+                count_candidates = count_candidates + 1
+                if m.stage_id in stages:
+                    if m.block_position in block_positions:
+                        if layer_positions is None or m.layer_position in layer_positions:
+                            if hasattr(m, attribute):
+                                setattr(m, attribute, attribute_goal_state)
+                                count_affected = count_affected + 1
+                                if printout: print(f"{attribute} == {attribute_goal_state} for {m.block_name}-layer with id {m.stage_id}:{m.block_position}:{m.layer_position}", f"                module {count_all} of type {type(m)}:")
+                            else:
+                                print(f"Warning: {attribute} does not exist in {m}")
+                        else:
+                            if printout: print(f"Attribute {attribute} on module {m.stage_id}:{m.block_position}:{m.layer_position} was not affected due to layer condition", f"                module {count_all} of type {type(m)}:")
+                    else:
+                        if printout: print(f"Attribute {attribute} on module {m.stage_id}:{m.block_position}:{m.layer_position} was not affected due to block condition", f"                module {count_all} of type {type(m)}:")
+                else:
+                    if printout: print(f"Attribute {attribute} on module {m.stage_id}:{m.block_position}:{m.layer_position} was not affected due to stage condition", f"                module {count_all} of type {type(m)}:")
+
+        if printout:
+            print(f"SUMMARY: Attribute {attribute} to {attribute_goal_state} for {count_affected} out of {count_all} modules. There were {count_candidates} QConvLayers.\nStages = {stages} and block_positions = {block_positions} and layer_positions = {layer_positions}.")
 
 
 class EfficientViTSam(nn.Module):
@@ -485,13 +533,115 @@ class EfficientViTSam(nn.Module):
     def toggle_selective_quant_off(self, **kwargs):
         self.image_encoder.toggle_selective_attribute(attribute="quant", attribute_goal_state=False, **kwargs,)
 
+    ### Simple versions: expects other backbone formats
+    def simple_toggle_selective_calibrate_on(self, **kwargs):
+        self.image_encoder.simple_toggle_selective_attribute(attribute="calibrate", **kwargs,)
+        
+    def simple_toggle_selective_calibrate_off(self, **kwargs):
+        self.image_encoder.simple_toggle_selective_attribute(attribute="calibrate", attribute_goal_state=False, **kwargs,)
+
+    def simple_toggle_selective_last_calibrate_on(self, **kwargs):
+        self.image_encoder.simple_toggle_selective_attribute(attribute="last_calibrate", **kwargs,)
+    
+    def simple_toggle_selective_last_calibrate_off(self, **kwargs):
+        self.image_encoder.simple_toggle_selective_attribute(attribute="last_calibrate", attribute_goal_state=False, **kwargs,)
+
+    def simple_toggle_selective_quant_on(self, **kwargs):
+        self.image_encoder.simple_toggle_selective_attribute(attribute="quant", **kwargs,)
+
+    def simple_toggle_selective_quant_off(self, **kwargs):
+        self.image_encoder.simple_toggle_selective_attribute(attribute="quant", attribute_goal_state=False, **kwargs,)
+
+    ### statistics
+    def toggle_monitor_distributions_on(self, **kwargs):
+        for m in self.image_encoder.modules():
+            if type(m) in [QConvLayer, QConvLayerV2]:
+                m.monitor_distributions = True
+
+    def toggle_monitor_distributions_off(self, **kwargs):
+        for m in self.image_encoder.modules():
+            if type(m) in [QConvLayer, QConvLayerV2]:
+                m.monitor_distributions = False
+
     def get_number_of_quantized_params(self):
-        n = 0
+        affected = 0
+        unaffected = 0
         for m in self.image_encoder.modules():
             if type(m) in [QConvLayer, QConvLayerV2]:
                 if m.quant:
-                    n = n + m.parameter_count()
-        return n
+                    affected = affected + m.parameter_count()
+                else:
+                    unaffected = unaffected + m.parameter_count()
+        return affected, unaffected
+
+    def print_named_parameters(self):
+        for name, param in self.image_encoder.named_parameters():
+            print("param name:", name)
+            print("param.size():", param.size())
+
+
+    def print_some_statistics(self):
+        counter = 0
+        for m in self.image_encoder.modules():
+            if type(m) in [QConvLayer, QConvLayerV2]:
+                observer = m.weight_observer
+                if observer.stage_id == 'stage2':
+                    counter += 1
+                    if counter == 2:                    
+                        print(f"Observer with info: {observer.stage_id}, {observer.block_name}, {observer.operation_type}")
+                        tensor = observer.stored_weight_tensor
+                        tensor = tensor.detach()
+                        tensor = tensor.cpu() #torch.histogram is not implemented on CUDA backend.
+                        # tensor = tensor.cuda()
+                        
+                        '''The shape of the weight tensor corresponds to (out_channels, in_channels, kernel_height, kernel_width).'''
+                        print(f"stored weight tensor: {tensor.size()}"
+                        f"Mean: {tensor.mean().item()}\n"
+                        f"Std: {tensor.std().item()}\n"
+                        f"Min: {tensor.min().item()}\n"
+                        f"Max: {tensor.max().item()}")
+
+                        hist_values, bin_edges = torch.histogram(tensor, density=True)
+
+                        plt.bar(bin_edges[:-1], hist_values, width = 0.1)
+                        plt.title(f"Weights of {observer.stage_id}, {observer.block_name}, {observer.operation_type}, second block \n all values of tensor with shape {tensor.size()}")
+                       
+                        plt.axvline(tensor.min().item(), color='r', linestyle='dotted', linewidth=1)
+                        plt.axvline(tensor.max().item(), color='g', linestyle='dotted', linewidth=1)
+                        plt.axvline(torch.quantile(tensor, 0.5).item(), color='b', linestyle='dotted', linewidth=1)  # 50th percentile (median)
+                        plt.xlabel("Weight value")
+                        plt.ylabel("Normalized number of occurances")
+
+                        plt.savefig(f'./plots/My_first_histogram.png')
+                        plt.close()
+
+                         # Reshape tensor to 2D, with second dimension being the flattened kernel
+                        tensor_2d = tensor.view(tensor.shape[0], -1)
+                        # Select the first 12 channels
+                        tensor_2d = tensor_2d[:12]
+
+                        # Create boxplot
+                        plt.boxplot(tensor_2d, vert=True, patch_artist=True)
+                        plt.title(f"Weights of 12 channels of {observer.stage_id}, {observer.block_name}, {observer.operation_type}, second block \n all values of tensor with shape {tensor.size()}")
+                        plt.xlabel("Channel number (output)")
+                        plt.ylabel("Weight value")
+
+                        #plt.xlim(0, tensor_2d.shape[0] + 5)  # adjust '5' as needed
+
+                        #plt.text(tensor_2d.shape[0] + 1, tensor_2d.min(), 'Box: Interquartile Range (IQR)\nLine in Box: Median\nWhiskers: Range within 1.5*IQR\nCircles: Outliers', verticalalignment='bottom')
+
+                        plt.savefig(f'./plots/My_first_boxplot.png')
+                        plt.close()
+
+        '''
+        Observer with info: stage2, fmb, conv_weight
+        stored weight tensor: torch.Size([1024, 64, 3, 3])
+        Observer with info: stage2, fmb, conv_weight
+        stored weight tensor: torch.Size([128, 1024, 1, 1])
+        Observer with info: stage2, fmb, conv_weight
+        stored weight tensor: torch.Size([512, 128, 3, 3])
+        Observer with info: stage2, fmb, conv_weight
+        stored weight tensor: torch.Size([128, 512, 1, 1])'''
 
 
 class EfficientViTSamPredictor:

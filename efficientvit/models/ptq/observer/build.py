@@ -14,6 +14,6 @@ str2observer = {
 }
 
 
-def build_observer(observer_str, module_type, bit_type, calibration_mode):
+def build_observer(observer_str, module_type, bit_type, calibration_mode, **kwargs):
     observer = str2observer[observer_str]
-    return observer(module_type, bit_type, calibration_mode)
+    return observer(module_type, bit_type, calibration_mode, **kwargs)

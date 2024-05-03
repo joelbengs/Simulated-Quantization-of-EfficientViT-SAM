@@ -7,9 +7,15 @@ import argparse
 import json
 import os
 
+from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
+from configs.quant_backbones_zoo import REGISTERED_BACKBONE_VERSIONS
+from configs.quant_backbones_zoo import SIMPLE_REGISTERED_BACKBONE_VERSIONS
+from efficientvit.models.nn.ops import QConvLayer, QConvLayerV2
+from efficientvit.models.ptq.bit_type import BitType
+from efficientvit.models.ptq.observer.base import BaseObserver
 from lvis import LVIS
 from PIL import Image
 from pycocotools import mask as mask_util
@@ -18,294 +24,13 @@ from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 from torchinfo import summary
+import pprint
 
 from efficientvit.models.efficientvit.sam import EfficientViTSamPredictor
 from efficientvit.sam_model_zoo import create_sam_model
 from sam_eval_utils import Clicker, evaluate_predictions_on_coco, evaluate_predictions_on_lvis, get_iou_metric, iou
 from quant_config import Config
 
-
-"""
-The neck must be added to stages, the "independent" (or lets change to "dag?") must be added to block names, in order to quantize the neck. Else everything is void.
-In every part, the first convlayer is unaffected now. smart?
-"""
-
-
-REGISTERED_BACKBONE_VERSIONS = {
-    # FP32 non-qunatized baseline has name '0'
-    # FAMILY 1
-    '1a': {
-        'stages': ["stage0", "stage1", "stage2", "stage3"],
-        'block_names': ["res", "fmb", "fmb", "mb"],
-        'spare_bottlenecks': True,
-    },
-    '1b': {
-        'stages': ["stage0"],
-        'block_names': ["res", "fmb", "fmb", "mb"],
-        'spare_bottlenecks': True,
-    },
-    '1c': {
-        'stages': ["stage1"],
-        'block_names': ["res", "fmb", "fmb", "mb"],
-        'spare_bottlenecks': True,
-    },
-    '1d': {
-        'stages': ["stage2"],
-        'block_names': ["res", "fmb" "fmb", "mb"],
-        'spare_bottlenecks': True,
-    },
-    '1e': {
-        'stages': ["stage3"],
-        'block_names': ["res", "fmb", "fmb", "mb"],
-        'spare_bottlenecks': True,
-    },
-    # FAMILY 2 - to test attention stages
-    '2a': { # " Stage 4 and 5,"
-        'stages': ["stage4", "stage5"],
-        'block_names': ["att", "att@3", "att@5"],
-        'spare_bottlenecks': True,
-        'spare_attention_qkv': False,
-        'spare_attention_scaling': False,
-        'spare_attention_projection': False,
-    },
-    '2b': {
-        'stages': ["stage4", "stage5"],
-        'block_names': ["att", "att@3", "att@5"],
-        'spare_bottlenecks': True,
-        'spare_attention_qkv': True,
-        'spare_attention_scaling': False,
-        'spare_attention_projection': False,
-    },
-    '2c': {
-        'stages': ["stage4", "stage5"],
-        'block_names': ["att", "att@3", "att@5"],
-        'spare_bottlenecks': True,
-        'spare_attention_qkv': False,
-        'spare_attention_scaling': True,
-        'spare_attention_projection': False,
-    },
-    '2d': {
-        'stages': ["stage4", "stage5"],
-        'block_names': ["att", "att@3", "att@5"],
-        'spare_bottlenecks': True,
-        'spare_attention_qkv': False,
-        'spare_attention_scaling': False,
-        'spare_attention_projection': True,
-    },
-    '2e': {
-        'stages': ["stage4", "stage5"],
-        'block_names': ["att", "att@3", "att@5"],
-        'spare_bottlenecks': True,
-        'spare_attention_qkv': True,
-        'spare_attention_scaling': True,
-        'spare_attention_projection': True,
-    },
-    # FAMILY 3 - to test the limits of XL1 - Lift one stage back to FP at a time. The model 3_q_all_convs is the baseline
-    '3_q_all': {
-        'stages': ["stage0", "stage1", "stage2", "stage3", "stage4", "stage5", "neck"],
-        'block_names': ["independent", "res", "mb", "fmb", "att", "att@3", "att@5"],
-        'spare_bottlenecks': False,
-        'spare_attention_qkv': False,
-        'spare_attention_scaling': False,
-        'spare_attention_projection': False,
-    },
-    '3_q_all_but_stage0': {
-        'stages': ["stage1", "stage2", "stage3", "stage4", "stage5"],
-        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
-        'spare_bottlenecks': False,
-        'spare_attention_qkv': False,
-        'spare_attention_scaling': False,
-        'spare_attention_projection': False, 
-    },
-    '3_q_all_but_stage1': {
-        'stages': ["stage0", "stage2", "stage3", "stage4", "stage5"],
-        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
-        'spare_bottlenecks': False,
-        'spare_attention_qkv': False,
-        'spare_attention_scaling': False,
-        'spare_attention_projection': False,
-    },
-    '3_q_all_but_stage2': {
-        'stages': ["stage0", "stage1", "stage3", "stage4", "stage5"],
-        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
-        'spare_bottlenecks': False,
-        'spare_attention_qkv': False,
-        'spare_attention_scaling': False,
-        'spare_attention_projection': False,
-    },
-    '3_q_all_but_stage3': {
-        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
-        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
-        'spare_bottlenecks': True,
-        'spare_attention_qkv': False,
-        'spare_attention_scaling': False,
-        'spare_attention_projection': False,
-    },
-    '3_q_all_but_stage4': {
-        'stages': ["stage0", "stage1", "stage2", "stage3", "stage5"],
-        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
-        'spare_bottlenecks': True,
-        'spare_attention_qkv': False,
-        'spare_attention_scaling': False,
-        'spare_attention_projection': False,
-    },
-    '3_q_all_but_stage5': {
-        'stages': ["stage0", "stage1", "stage2", "stage3", "stage4"],
-        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
-        'spare_bottlenecks': True,
-        'spare_attention_qkv': False,
-        'spare_attention_scaling': False,
-        'spare_attention_projection': False,
-    },
-    '3_q_all_but_bottlenecks': {
-        'stages': ["stage0", "stage1", "stage2", "stage3", "stage4", "stage5"],
-        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
-        'spare_bottlenecks': True,
-        'spare_attention_qkv': False,
-        'spare_attention_scaling': False,
-        'spare_attention_projection': False,
-    },
-    '3_q_all_but_qkv': {
-        'stages': ["stage0", "stage1", "stage2", "stage3", "stage4", "stage5"],
-        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
-        'spare_bottlenecks': False,
-        'spare_attention_qkv': True,
-        'spare_attention_scaling': False,
-        'spare_attention_projection': False,
-    },
-    # Family 4 - investigating saving stage 3 together with various things, here one at a time
-    '4_q_all_but_stage3_bottlenecks': {
-        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
-        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
-        'spare_bottlenecks': True,
-        'spare_attention_qkv': False,
-        'spare_attention_scaling': False,
-        'spare_attention_projection': False,
-    },
-    '4_q_all_but_stage3_qkv': {
-        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
-        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
-        'spare_bottlenecks': False,
-        'spare_attention_qkv': True,
-        'spare_attention_scaling': False,
-        'spare_attention_projection': False,
-    },
-    '4_q_all_but_stage3_scaling': {
-        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
-        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
-        'spare_bottlenecks': False,
-        'spare_attention_qkv': False,
-        'spare_attention_scaling': True,
-        'spare_attention_projection': False,
-    },
-    '4_q_all_but_stage3_projection': {
-        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
-        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
-        'spare_bottlenecks': False,
-        'spare_attention_qkv': False,
-        'spare_attention_scaling': False,
-        'spare_attention_projection': True,
-    },
-    # Family 4 part 2 - investigating saving stage3 + bottlenecks + parts of attention. Bias: Bottlenecks are the most important
-    '4_q_all_but_stage3_bottleneck_qkv': {
-        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
-        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
-        'spare_bottlenecks': True,
-        'spare_attention_qkv': True,
-        'spare_attention_scaling': False,
-        'spare_attention_projection': False,
-    },
-    '4_q_all_but_stage3_bottleneck_scaling': {
-        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
-        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
-        'spare_bottlenecks': True,
-        'spare_attention_qkv': False,
-        'spare_attention_scaling': True,
-        'spare_attention_projection': False,
-    },
-    '4_q_all_but_stage3_bottleneck_projection': {
-        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
-        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
-        'spare_bottlenecks': True,
-        'spare_attention_qkv': False,
-        'spare_attention_scaling': False,
-        'spare_attention_projection': True,
-    },
-    '4_q_all_but_stage3_bottleneck_qkv_scaling_projection': {
-        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
-        'block_names': ["res", "mb", "fmb", "att", "att@3", "att@5"],
-        'spare_bottlenecks': True,
-        'spare_attention_qkv': True,
-        'spare_attention_scaling': True,
-        'spare_attention_projection': True,
-    },
-    # Family 5 - abalation of block types instead of stages. Based on quantizing everything and then recover slective block types one at a time
-    '5_q_all_but_ResBlocks': {
-        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
-        'block_names': ["mb", "fmb", "att", "att@3", "att@5"],
-        'spare_bottlenecks': False,
-        'spare_attention_qkv': False,
-        'spare_attention_scaling': False,
-        'spare_attention_projection': False,
-    },
-    '5_q_all_but_MBConvs': {
-        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
-        'block_names': ["res", "fmb", "att", "att@3", "att@5"],
-        'spare_bottlenecks': False,
-        'spare_attention_qkv': False,
-        'spare_attention_scaling': False,
-        'spare_attention_projection': False,
-    },
-    '5_q_all_but_FusedMBConvs': {
-        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
-        'block_names': ["res", "mb", "att", "att@3", "att@5"],
-        'spare_bottlenecks': False,
-        'spare_attention_qkv': False,
-        'spare_attention_scaling': False,
-        'spare_attention_projection': False,
-    },
-    '5_q_all_but_Attention': { #should give same results as quantizing all but saving stage 4 + 5 - do check that it is the case!
-        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
-        'block_names': ["res", "mb", "fmb"],
-        'spare_bottlenecks': False,
-        'spare_attention_qkv': False,
-        'spare_attention_scaling': False,
-        'spare_attention_projection': False,
-    },
-    # Family 6 - the inverse of 5 - abalation of block types instead of stages, but start from non-quantized and quantize selectively.
-    '5_q_only_ResBlocks': {
-        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
-        'block_names': ["res"],
-        'spare_bottlenecks': False,
-        'spare_attention_qkv': False,
-        'spare_attention_scaling': False,
-        'spare_attention_projection': False,
-    },
-    '5_q_only_MBConvs': {
-        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
-        'block_names': ["mb"],
-        'spare_bottlenecks': False,
-        'spare_attention_qkv': False,
-        'spare_attention_scaling': False,
-        'spare_attention_projection': False,
-    },
-    '5_q_only_FusedMBConvs': {
-        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
-        'block_names': ["fmb"],
-        'spare_bottlenecks': False,
-        'spare_attention_qkv': False,
-        'spare_attention_scaling': False,
-        'spare_attention_projection': False,
-    },
-    '5_q_only_Attention': {
-        'stages': ["stage0", "stage1", "stage2", "stage4", "stage5"],
-        'block_names': ["att", "att@3", "att@5"],
-        'spare_bottlenecks': False,
-        'spare_attention_qkv': False,
-        'spare_attention_scaling': False,
-        'spare_attention_projection': False,
-    },
-}
 
 def bbox_xywh_to_xyxy(bbox: list[int]) -> list[int]:
     return [bbox[0], bbox[1], bbox[0] + bbox[2], bbox[1] + bbox[3]]
@@ -446,11 +171,11 @@ def calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank):
     printout=(local_rank==0)
     efficientvit_sam = efficientvit_sam.cuda(local_rank).eval()                 # move model to correct GPU, and turn on eval mode
     predictor = EfficientViTSamPredictor(efficientvit_sam)                      # create predictor
-    calibrate_on(efficientvit_sam, args.backbone_version)                       # sets calibrate = true for all 'relevant' modules
+    toggle_operation(efficientvit_sam, 'calibrate', 'on', args.backbone_version, suppress_print=True)                       # sets calibrate = true for all 'relevant' modules
 
     for i, data in enumerate(tqdm(calib_dataloader, disable=local_rank != 0)):  # for each batch of images
         if i == len(calib_dataloader) - 1 or i == args.limit_iterations - 1:    # The lenght of the dataloader is dynamicas data is split over GPUs. zero-based enumeration              
-            last_calibrate_on(efficientvit_sam, args.backbone_version)          # if second to last batch, set last_calibrate = true for all relevant modules
+            toggle_operation(efficientvit_sam, 'last_calibrate', 'on', args.backbone_version, suppress_print=True)          # if second to last batch, set last_calibrate = true for all relevant modules
        
         if i == args.limit_iterations:
             break
@@ -464,8 +189,8 @@ def calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank):
             bbox = np.array(bbox_xywh_to_xyxy(ann["bbox"]))                     # find bounding box - (i.e. the prompt)
             _ = predict_mask_from_box(predictor, bbox)                          # predict mask from bounding box
 
-    calibrate_off(efficientvit_sam, args.backbone_version)
-    last_calibrate_off(efficientvit_sam, args.backbone_version)
+    toggle_operation(efficientvit_sam, 'calibrate', 'off', args.backbone_version, suppress_print=True)
+    toggle_operation(efficientvit_sam, 'last_calibrate', 'off', args.backbone_version, suppress_print=True)
     
 
 def run_point(efficientvit_sam, dataloader, num_click, local_rank):
@@ -565,6 +290,10 @@ def evaluate_to_dataframe(dataframe, results, prompt_type, dataset, annotation_j
         metrics = get_iou_metric(results)
         for key, val in metrics.items():
             dataframe.at[dataframe.index[-1], key] = val
+
+        more_metrics = calculate_savings(efficientvit_sam=efficientvit_sam)
+        for key, val in more_metrics.items():
+            dataframe.at[dataframe.index[-1], key] = val
         return dataframe
         
     elif prompt_type == "box_from_detector":
@@ -607,10 +336,28 @@ def create_dataframe(prompt_type, columns, script_name: str) -> pd.DataFrame:
         df = pd.DataFrame(columns=columns)
     return df
 
-def metadata_to_dataframe(dataframe: pd.DataFrame, args, columns) -> pd.DataFrame:
+def metadata_to_dataframe(dataframe: pd.DataFrame, args, config, columns) -> pd.DataFrame:
     row_data = {}
+    # save metadata from args
     for column in columns:
         row_data[column] = getattr(args, column)
+
+    # fetch the information in the BitType objects, instead of just object references
+    config_as_dict = vars(config).copy()
+    for key, value in config_as_dict.items():
+        if isinstance(value, BitType):
+            config_as_dict[key] = value.to_dict()
+
+    # save metadata from quantconfig. overwrites the previous loop if conflicting
+    for key,val in config_as_dict.items():
+        row_data[key] = val
+
+    # print to terminal for error checking
+    print("checker of row_data in metadata_to_dataframe")
+    for key in row_data.keys():
+        print(key, row_data[key])
+
+    # concatenate row_data to existing dataframe
     dataframe = pd.concat([dataframe, pd.DataFrame([row_data])], ignore_index=True)
     return dataframe
 
@@ -621,6 +368,18 @@ def save_dataframe_to_file(dataframe: pd.DataFrame, script_name: str) -> None:
     script_name = os.path.splitext(script_name)[0]
     dataframe.to_pickle(path=f'results/{script_name}.pkl')
 
+def toggle_operation(efficientvit_sam, operation, state, backbone_version='FP32_baseline', suppress_print=True):
+    printout=(local_rank==0 and suppress_print is False)
+    if state not in ['on', 'off']:
+        raise ValueError("State must be either 'on' or 'off'")
+    if backbone_version in REGISTERED_BACKBONE_VERSIONS:
+        getattr(efficientvit_sam, f'toggle_selective_{operation}_{state}')(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
+    elif backbone_version in SIMPLE_REGISTERED_BACKBONE_VERSIONS:
+        getattr(efficientvit_sam, f'simple_toggle_selective_{operation}_{state}')(printout=printout, **SIMPLE_REGISTERED_BACKBONE_VERSIONS[backbone_version])
+    else:
+        raise NotImplementedError("Backbone version not yet implemented")
+    
+### These are maybe not in use anymore?
 def calibrate_on(efficientvit_sam, backbone_version='0', suppress_print=True):
     printout=(local_rank==0 and suppress_print is False)
     if backbone_version == '0':
@@ -675,9 +434,149 @@ def quantize_off(efficientvit_sam, backbone_version='0', suppress_print=False):
     else:
         raise NotImplementedError("Backbone version not yet implemented")
 
-def get_number_of_quantized_params(efficientvit_sam):
-    n = efficientvit_sam.get_number_of_quantized_params()
-    print(f"quantized {n} params to int8, saving {3*n} bytes = {3*n/1024/1024} Mb")
+def calculate_savings(efficientvit_sam):
+    # calculates the theorethical savings from the applied quantization. Assumes from FP32 to INT8
+    affected, unaffected = efficientvit_sam.get_number_of_quantized_params() #number of weights
+    total = affected + unaffected
+    bytes_saved = 3*affected
+    megabytes_saved = 3*affected/1024/1024
+    model_size_mb_original = 4*total/1024/1024 # 4 bytes = 32 bits
+    model_size_mb_quantized = model_size_mb_original - megabytes_saved
+    percentage_quantized = 100*(affected/total)
+    print(f"quantized {affected} params to int8, \nsaving {bytes_saved} bytes = {megabytes_saved:.4f} Mb. \n{unaffected} params were unaffected. \n{percentage_quantized:.4f}% reduction.")
+    return {
+        "number of quantized params": affected,
+        "percentage_of_params_quantized": percentage_quantized,
+        "bytes_saved": bytes_saved,
+        "megabytes_saved": megabytes_saved,
+        "model_size_mb_original": model_size_mb_original,
+        "model_size_mb_quantized": model_size_mb_quantized,
+    }
+
+def plot_histogram_of_observer(observer: BaseObserver, sizes):
+        if observer.stored_tensor.numel() == 0:
+            print(f"The tensor of {observer.stage_id}:{observer.block_position}:{observer.layer_position}:{observer.weight_norm_or_act} observer is empty! Has calibration been performed with attribute monitor_distributions turned on?")
+
+        tensor = observer.stored_tensor.clone() # might need to clone to isolate from other processes
+        tensor = tensor.detach() # can't call numpy() on tensor that requires grad
+        tensor = tensor.cpu() # torch.histogram is not implemented on CUDA backend.
+
+        hist_values, bin_edges = torch.histogram(tensor, density=True) # density calculates the density distributions isntead of just number of occurances
+
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.bar(bin_edges[:-1], hist_values, width = 0.1)
+        ax.set_title(f"Distribution of {observer.weight_norm_or_act} of {observer.stage_id}:{observer.block_position}:{observer.layer_position} - {observer.block_name}, \n tensor shape {tensor.size()}, 25 calibration samples")
+        
+        print(f"Plotting {observer.stage_id}:{observer.block_position}:{observer.layer_position}:{observer.weight_norm_or_act} with tensor size {tensor.size()}, numel = {tensor.numel()}")
+        sizes[f"{observer.stage_id}:{observer.block_position}:{observer.layer_position}:{observer.weight_norm_or_act}:{observer.block_name}"] = sci_num = format(tensor.numel(), '.2e')
+
+        # plot mean and standard deviation
+        mean = torch.mean(tensor).item()
+        std_dev = torch.std(tensor).item()
+        min_val = tensor.min().item()
+        max_val = tensor.max().item()
+        ax.axvline(mean, color='b', linestyle='dotted', linewidth=1, label=f'mean = {round(mean, 3)}')
+        ax.axvline(mean - std_dev, color='r', linestyle='dashed', linewidth=1, label=f'mean - std_dev = {round(mean - std_dev, 3)}')  # mean - std_dev
+        ax.axvline(mean + std_dev, color='r', linestyle='dashed', linewidth=1, label=f'mean + std_dev = {round(mean + std_dev, 3)}')  # mean + std_dev
+
+        ax.axvline(min_val, color='g', linestyle='dotted', linewidth=1, label=f'min = {round(min_val, 3)}')
+        ax.axvline(max_val, color='g', linestyle='dotted', linewidth=1, label=f'max = {round(max_val, 3)}')
+        ax.legend(bbox_to_anchor=(1.01, 1), loc='upper left', borderaxespad=0.)
+        
+        ax.set_xlabel("Weight value")
+        ax.set_ylabel(f"Relative Frequency of pre-trained weights" if observer.weight_norm_or_act == 'weight' else "Relative Frequency after calibration")
+        fig.tight_layout()
+        plt.savefig(f'./plots/histograms/histogram_{observer.stage_id}:{observer.block_position}:{observer.layer_position}_{observer.block_name}_{observer.weight_norm_or_act}.png')
+        plt.close()
+
+def plot_box_plot_of_observer(observer: BaseObserver):
+        if observer.stored_tensor.numel() == 0:
+            print(f"The tensor of {observer.stage_id}:{observer.block_position}:{observer.layer_position}:{observer.weight_norm_or_act} observer is empty! Has calibration been performed with attribute monitor_distributions turned on?")
+
+        tensor = observer.stored_tensor # might need to clone to isolate from other processes
+        tensor = tensor.detach() # can't call numpy() on tensor that requires grad
+        tensor = tensor.cpu() #torch.histogram is not implemented on CUDA backend.
+        # Reshape tensor to 2D, with second dimension being the flattened kernel
+        tensor_2d = tensor.view(tensor.shape[0], -1)
+
+        # Calculate Interquartile Range (IQR) for each channel
+        Q1 = torch.quantile(tensor_2d, 0.25, dim=1)
+        Q3 = torch.quantile(tensor_2d, 0.75, dim=1)
+        IQR = Q3 - Q1
+
+        # Define outliers based on IQR
+        lower_bound = Q1 - 1.5 * IQR
+        upper_bound = Q3 + 1.5 * IQR
+
+        # Find the largest outlier for each channel
+        lower_outliers = tensor_2d < lower_bound.unsqueeze(1)
+        upper_outliers = tensor_2d > upper_bound.unsqueeze(1)
+        outliers = tensor_2d * (lower_outliers | upper_outliers)
+        max_outliers, _ = torch.max(outliers.abs(), dim=1)
+
+        # Sort channels by the size of their largest outlier and select the top 16
+        k = min(16, max_outliers.size(0))
+        _, indices = torch.topk(max_outliers, k)
+        tensor_2d = tensor_2d[indices]
+
+        # Create boxplot
+        plt.boxplot(tensor_2d, vert=True, patch_artist=True)
+        plt.title(f"Distribution of {observer.weight_norm_or_act} of {observer.stage_id}:{observer.block_position}:{observer.layer_position} - {observer.block_name}, \n tensor shape {tensor.size()}, ? calibration samples")
+        plt.xlabel("Channel number (output) - limited to the 16 with the largest outliers")
+        plt.ylabel(f"Relative Frequency of pre-trained weights" if observer.weight_norm_or_act == 'weight' else "Relative Frequency after calibration")
+
+        plt.savefig(f'./plots/boxplots/box_plot_{observer.stage_id}:{observer.block_position}:{observer.layer_position}_{observer.weight_norm_or_act}.png')
+        plt.close()
+
+def plot_distributions_of_image_encoder(efficientvit_sam):
+    sizes_w = {}
+    sizes_a = {}
+    sizes_n = {}
+    for m in efficientvit_sam.image_encoder.modules():
+        if type(m) in [QConvLayer, QConvLayerV2]:
+            #if hasattr(m, 'weight_observer'):
+            #    plot_histogram_of_observer(m.weight_observer, sizes_w)
+                # plot_box_plot_of_observer(m.weight_observer)
+
+            #if hasattr(m, 'act_observer'):
+             #   plot_histogram_of_observer(m.act_observer, sizes_a)
+                # plot_box_plot_of_observer(m.act_observer)
+
+            if hasattr(m, 'norm_observer'):
+                plot_histogram_of_observer(m.norm_observer, sizes_n)
+                # plot_box_plot_of_observer(m.act_observer)
+    print("size of weight tensors")
+    for key in sizes_w.keys():
+        print(key, sizes_w[key])
+    print("size of act tensors")
+    for key in sizes_a.keys():
+        print(key, sizes_a[key])
+    print("size of norm tensors")
+    for key in sizes_n.keys():
+        print(key, sizes_n[key])
+
+def full_precision_distribution_analysis(efficientvit_sam):
+    '''
+    This function plots the distributions of weights, activations and norms of a given model.
+    The results are saved under .plots/histograms and .plots/box_plots
+
+    This functinoality is implemented using observers. Each convolutional layer has one observer object connected to each of its operatiions (conv, norm, act).
+    When the attribute "monitor_distirbutions" is toggled to True, the observer object will store all sample tensors passing through during calibration.
+    Weights are static, so more than one pass of calibration will not alter the weight distributions.
+    Tensors passing throgh norm and activation will be concatenated in the observer. There is a risk for memory overflow, in which case the tensors should be reduced to histogram representations before storage.
+    
+    After calibration, the tensor stored in each observer is processed into a histogram and exported with matplotlib.
+
+    To plot the  call the main method with:
+    
+    --model l0_quant - or any other quant model. only models using a quantizable backbone and neck can be analyzed
+    --backbone_version L0:-:- - or another FP32 baseline backbone. If anything is quantized during calibration, activations and norms are distorted
+    --plot_distributions - this will trigger this function
+
+    '''
+    # assuming efficientvit_sam.toggle_monitor_distributions_on() has been called before calibration, and calibration has been run for at least one sample.
+    plot_distributions_of_image_encoder(efficientvit_sam)
+    efficientvit_sam.toggle_monitor_distributions_off()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -704,33 +603,28 @@ if __name__ == "__main__":
     parser.add_argument("--quantize_A", action="store_true", help="Turn on quantization and calibration for activations")
     parser.add_argument("--quantize_N", action="store_true", help="Turn on quantization and calibration for norms")
 
-    parser.add_argument("--observer_method_W", default="minmax", choices=["minmax", "ema", "omse", "percentile"]) #TODO - implement this
-    parser.add_argument("--observer_method_A", default="minmax", choices=["minmax", "ema", "omse", "percentile"]) #TODO - implement this
-    parser.add_argument("--observer_method_N", default="minmax", choices=["minmax", "ema", "omse", "percentile"]) #TODO - implement this
+    parser.add_argument("--observer_method_W", choices=["minmax", "ema", "omse", "percentile"]) #TODO - implement this
+    parser.add_argument("--observer_method_A", choices=["minmax", "ema", "omse", "percentile"]) #TODO - implement this
+    parser.add_argument("--observer_method_N", choices=["minmax", "ema", "omse", "percentile"]) #TODO - implement this
 
-    parser.add_argument("--quantize_method_W", default="uniform", choices=["uniform", "log2"]) #TODO - implement this
-    parser.add_argument("--quantize_method_A", default="uniform", choices=["uniform", "log2"]) #TODO - implement this
-    parser.add_argument("--quantize_method_N", default="uniform", choices=["uniform", "log2"]) #TODO - implement this
+    parser.add_argument("--quantize_method_W", choices=["uniform", "log2"]) #TODO - implement this
+    parser.add_argument("--quantize_method_A", choices=["uniform", "log2"]) #TODO - implement this
+    parser.add_argument("--quantize_method_N", choices=["uniform", "log2"]) #TODO - implement this
 
-    parser.add_argument("--backbone_version", type=str, default='0')
+    parser.add_argument("--calibration_mode_W", choices=["layer_wise", "channel_wise"]) #TODO - implement this
+    parser.add_argument("--calibration_mode_A", choices=["layer_wise", "channel_wise"]) #TODO - implement this
+    parser.add_argument("--calibration_mode_N", choices=["layer_wise", "channel_wise"]) #TODO - implement this
 
+    parser.add_argument("--plot_distributions", action="store_true", help="monitors and plots distributions of weiights and activations. Must be used with _quant model and should be used with an FP32 backbone")
+
+    parser.add_argument("--backbone_version", type=str, default='FP32_baseline')
 
     args = parser.parse_args()
     # Set args.quantize to True if any of the other quantize arguments are True
     args.quantize = args.quantize_W or args.quantize_A or args.quantize_N
     config = Config(args) # quantization configuration
-    config = Config(args) # quantization configuration
 
-    def print(*args, **kwargs):
-        if local_rank == 0:
-            __builtins__.print(*args, **kwargs)
-    # del print
-
-    # TODO: Implement for all three val types
-    # TODO: Quantize norms and activations, i.e. make the config work.
-    
     # colums for dataframes when running scripts.
-    # TODO: Perhaps these can be built from the arguments of the Config object instead? Not all but half.
     columns = [
         "model",
         "prompt_type",
@@ -761,70 +655,73 @@ if __name__ == "__main__":
         if local_rank == 0 and not args.suppress_print:
             print(f"Using {torch.distributed.get_world_size()} GPUs")
     torch.cuda.set_device(local_rank)
-    
+
+    # Override the built-in print function so only master process prints
+    def print(*args, **kwargs):
+        if local_rank == 0:
+            __builtins__.print(*args, **kwargs)
+
     # model creation
     efficientvit_sam = create_sam_model(name=args.model, pretrained=True, weight_url=args.weight_url, config=config)
 
-    # print model info
+    # statistics
+    # efficientvit_sam.print_named_parameters()
+
     if args.print_torchinfo and local_rank == 0:
         # Use torchinfo.summary to print the model. Depth controls granularity of printout - all params are counted anyhow
         summary(
             efficientvit_sam.image_encoder, 
-            depth=4,
+            depth=5,
             col_names = ("output_size", "num_params", "mult_adds"),
             input_size=(1, 3, 2014, 512)
             )
 
     # dataset creation
-    dataset = eval_dataset(
-        args.dataset, args.image_root, args.prompt_type, args.annotation_json_file, args.source_json_file
-    )
+    dataset = eval_dataset(args.dataset, args.image_root, args.prompt_type, args.annotation_json_file, args.source_json_file)
     sampler = DistributedSampler(dataset, shuffle=False)
-    dataloader = DataLoader(
-        dataset, batch_size=1, sampler=sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn
-    )
-    if local_rank == 0 and not args.suppress_print:
+    dataloader = DataLoader(dataset, batch_size=1, sampler=sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn)
+    if not args.suppress_print:
         print(f"The dataloader contains {len(dataloader.dataset)} images.")
 
     # calibration dataset
-    if args.quantize:
-        calib_dataset = eval_dataset(
-            args.dataset, args.image_root_calibration, args.prompt_type, args.annotation_json_file, args.source_json_file
-        )
+    if args.quantize or args.plot_distributions:
+        calib_dataset = eval_dataset(args.dataset, args.image_root_calibration, args.prompt_type, args.annotation_json_file, args.source_json_file)
         calib_sampler = DistributedSampler(calib_dataset, shuffle=False)
-        calib_dataloader = DataLoader(
-            calib_dataset, batch_size=1, sampler=calib_sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn
-        )
-        if local_rank == 0 and not args.suppress_print:
+        calib_dataloader = DataLoader(calib_dataset, batch_size=1, sampler=calib_sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn)
+        if not args.suppress_print:
             print(f"The calibration dataloader contains {len(calib_dataloader.dataset)} images.")
+
+    if args.plot_distributions and local_rank == 0:
+        efficientvit_sam.toggle_monitor_distributions_on()
 
     # inference + calibration + quantization
     if args.prompt_type == "point":
         if args.quantize:
-            if local_rank == 0 and not args.suppress_print:
+            if not args.suppress_print:
                 print("Calibrating point...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
             quantize_on(efficientvit_sam, args.backbone_version, args.suppress_print)
-
         results = run_point(efficientvit_sam, dataloader, args.num_click, local_rank)
 
     elif args.prompt_type == "box":
         if args.quantize:
-            if local_rank == 0 and not args.suppress_print:
+            if not args.suppress_print:
                 print("Calibrating box...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
-            quantize_on(efficientvit_sam, args.backbone_version, args.suppress_print)
-            get_number_of_quantized_params(efficientvit_sam)
-
+            toggle_operation(efficientvit_sam, 'quant', 'on', args.backbone_version, args.suppress_print)
+    
+        if args.plot_distributions and local_rank == 0:
+            full_precision_distribution_analysis(efficientvit_sam)
+        
         results = run_box(efficientvit_sam, dataloader, local_rank)
+
 
     elif args.prompt_type == "box_from_detector":
         if args.quantize:
-            if local_rank == 0 and not args.suppress_print:
+            if not args.suppress_print:
                 print("Calibrating box_from_detector...")
             calibrate_run_box(efficientvit_sam, calib_dataloader, args, local_rank)
             quantize_on(efficientvit_sam, args.backbone_version, args.suppress_print)
-
         results = run_box_from_detector(efficientvit_sam, dataloader, local_rank)
 
     else:
@@ -834,10 +731,11 @@ if __name__ == "__main__":
     if local_rank == 0:
         if args.export_dataframe:
             df = create_dataframe(args.prompt_type, columns.copy(), args.script_name)
-            df = metadata_to_dataframe(df, args, columns)
+            df = metadata_to_dataframe(df, args, config, columns)
             df = evaluate_to_dataframe(df, results, args.prompt_type, args.dataset, args.annotation_json_file, args=args)
             print("New row added to results: \n", df.tail(1))
             save_dataframe_to_file(df, args.script_name)
         else:
             print("")
             evaluate(results, args.prompt_type, args.dataset, args.annotation_json_file)
+            calculate_savings(efficientvit_sam)
