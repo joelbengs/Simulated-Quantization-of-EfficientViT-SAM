@@ -682,6 +682,9 @@ class QConvLayer(nn.Module):
         # observer for weights
         self.weight_observer, self.weight_quantizer = self.build_observer_and_quantizer('weight')
 
+        # observer for post-convolution
+        self.post_mac_observer, self.post_mac_quantizer = self.build_observer_and_quantizer('weight')
+
          # observer for norms
         if self.norm is not None:
             self.norm_observer, self.norm_quantizer = self.build_observer_and_quantizer('norm')
@@ -721,7 +724,7 @@ class QConvLayer(nn.Module):
         if self.monitor_distributions:
             self.weight_observer.store_tensor(self.conv.weight)
 
-        # calibrate weights
+        # calibrate weights and activations
         if self.calibrate:
             self.weight_quantizer.observer.update(self.conv.weight) # for all batches of calibration data: update statistics
             if self.last_calibrate:                          # after the last batch, fetch S and Z of the quantizer
@@ -735,13 +738,16 @@ class QConvLayer(nn.Module):
         if self.quant_weights:
             # quant + dequant the weights
             w = self.weight_quantizer(self.conv.weight)
-            # passing the parameters from self.conv to F.conv2d
+            # maybe quantize bias as well?
+            # passing the quantized parameters from self.conv to F.conv2d
             x = F.conv2d(x, w, self.conv.bias, self.conv.stride, self.conv.padding, self.conv.dilation, self.conv.groups)
         else:
             x = self.conv(x)
          
-        # normalization
+        # normalization (only monitoring, no quantization)
         if self.norm:
+            if self.calibrate:
+                self.norm_quantizer.observer.update(x)
             x = self.norm(x)
             if self.monitor_distributions:
                 self.norm_observer.store_tensor(x.clone()) # to freely move it between devices in analysis
