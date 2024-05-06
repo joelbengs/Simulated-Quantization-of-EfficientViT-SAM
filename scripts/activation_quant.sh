@@ -15,8 +15,6 @@ nproc_per_node=2
 export OMP_NUM_THREADS=$((nb_cpu_threads / nproc_per_node))
 # Note: Time to execute was the same if this was =1 or =32
 
-prompt_type=box
-
 # Define the model family and prompt type 
 # WARNING!! Models without _quant in the name will not use the correct backbone!!
 models=(
@@ -126,11 +124,7 @@ L0:neck:6:1
 L0:neck:7:0
 )
 
-#backbone_versions=(
-#L0:x:x:x
-#)
-
-echo "--------- STARTING SCRIPT ---------}"
+echo "--------- STARTING SCRIPT 1---------}"
 for bbv in "${backbone_versions[@]}"
 do
   for model in "${models[@]}"
@@ -141,20 +135,20 @@ do
     eval_sam_model_joel.py \
     --dataset coco \
     --image_root coco/val2017 \
-    --image_root_calibration coco/minitrain2017 \
+    --dataset_calibration sa-1b \
+    --image_root_calibration sa-1b \
     --annotation_json_file coco/annotations/instances_val2017.json \
     --model $model \
     --limit_iterations 2500 \
-    --prompt_type $prompt_type \
+    --prompt_type point_and_box \
     --backbone_version $bbv \
     --quantize_W \
     --quantize_A \
     --export_dataframe \
-    --suppress_print \
     --script_name $(basename $0 .sh) # removes the .sh extension and the directory scripts/
     # --limit_iterations 10 \
     # --export_dataframe \
-    # --suppress_print \
+    # --print_progress \
     # --plot_distributions \
     # --quantize_method_W $qmw \
     # --quantize_A \
@@ -168,7 +162,82 @@ do
 done
 
 # Execute view_results.py
-# python view_pickle_file.py --pickle_file_path results --script_name $(basename $0 .sh) --view_all_columns
+#python view_pickle_file.py --pickle_file_path results --script_name $(basename $0 .sh) --view_all_columns
+
+echo "--------- STARTING SCRIPT 2---------}"
+for bbv in "${backbone_versions[@]}"
+do
+  for model in "${models[@]}"
+  do
+    echo "Model $model, backbone_version: $bbv" §
+    # Run the evaluation command for the current model - with --quantize and configurations
+    torchrun --nproc_per_node=2 \
+    eval_sam_model_joel.py \
+    --dataset coco \
+    --image_root coco/val2017 \
+    --dataset_calibration sa-1b \
+    --image_root_calibration sa-1b \
+    --annotation_json_file coco/annotations/instances_val2017.json \
+    --model $model \
+    --limit_iterations 2500 \
+    --prompt_type point_and_box \
+    --backbone_version $bbv \
+    --quantize_W \
+    --export_dataframe \
+    --script_name E7_weight_only # removes the .sh extension and the directory scripts/
+    # --limit_iterations 10 \
+    # --export_dataframe \
+    # --print_progress \
+    # --plot_distributions \
+    # --quantize_method_W $qmw \
+    # --quantize_A \
+    # --print_torchinfo \
+    # --quantize_N \
+    # --quantize_method_A $qma \
+    # --quantize_method_N $qmn \
+    # --observer-method_A $oma \
+    # --observer-method_N $omn \
+  done
+done
+
+
+echo "--------- STARTING SCRIPT ---------}"
+for bbv in "${backbone_versions[@]}"
+do
+  for model in "${models[@]}"
+  do
+    echo "Model $model, backbone_version: $bbv" §
+    # Run the evaluation command for the current model - with --quantize and configurations
+    torchrun --nproc_per_node=2 \
+    eval_sam_model_joel.py \
+    --dataset coco \
+    --image_root coco/val2017 \
+    --dataset_calibration sa-1b \
+    --image_root_calibration sa-1b \
+    --annotation_json_file coco/annotations/instances_val2017.json \
+    --model $model \
+    --limit_iterations 2500 \
+    --prompt_type point_and_box \
+    --backbone_version $bbv \
+    --quantize_W \
+    --export_dataframe \
+    --calibration_mode_W channel_wise \
+    --script_name E7_weight_only_channel_wise # removes the .sh extension and the directory scripts/
+    # --limit_iterations 10 \
+    # --export_dataframe \
+    # --print_progress \
+    # --plot_distributions \
+    # --quantize_method_W $qmw \
+    # --quantize_A \
+    # --print_torchinfo \
+    # --quantize_N \
+    # --quantize_method_A $qma \
+    # --quantize_method_N $qmn \
+    # --observer-method_A $oma \
+    # --observer-method_N $omn \
+  done
+done
+
 
 echo "Finished $prompt_type --quanitze evaluation of models: ${models[*]}"
 # make it executable with the command chmod +x scriptname.sh

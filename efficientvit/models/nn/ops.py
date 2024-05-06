@@ -1119,7 +1119,6 @@ class QMBConv(nn.Module):
             layer_position=layer_positions[1],
             **kwargs, # config arguments
         )
-        '''
         self.point_conv = QConvLayer(
             mid_channels,
             out_channels,
@@ -1129,17 +1128,17 @@ class QMBConv(nn.Module):
             use_bias=use_bias[2],
             layer_position=layer_positions[2],
             **kwargs, # config arguments
-        )'''
+        )
 
         # Used for testing a model with this layer in FP32
-        self.point_conv = ConvLayer(
+        '''self.point_conv = ConvLayer(
             mid_channels,
             out_channels,
             1,
             norm=norm[2],
             act_func=act_func[2],
             use_bias=use_bias[2],
-        )
+        )'''
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.inverted_conv(x)
