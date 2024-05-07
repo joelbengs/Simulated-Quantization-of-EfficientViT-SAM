@@ -34,7 +34,6 @@ from efficientvit.models.nn import (
     ## quantized basic layers ##
     QConvLayer,
     QConvLayerV2,
-    QLinearLayer,
     ## quantized basic blocks ##
     QDSConv,
     QMBConv,
@@ -218,10 +217,7 @@ class QSamNeck(DAGBlock):
                         norm=norm, 
                         act_func=None,
                         # configs
-                        bit_type=config.BIT_TYPE_W,
-                        calibration_mode=config.CALIBRATION_MODE_W,
-                        observer_str=config.OBSERVER_W,
-                        quantizer_str=config.QUANTIZER_W,
+                        config = config,
                         stage_id='neck',
                         block_position = i,
                         layer_position = 0,
@@ -243,10 +239,7 @@ class QSamNeck(DAGBlock):
                     norm=norm,
                     act_func=(act_func, act_func, None),
                     # configs
-                    bit_type=config.BIT_TYPE_W,
-                    calibration_mode=config.CALIBRATION_MODE_W,
-                    observer_str=config.OBSERVER_W,
-                    quantizer_str=config.QUANTIZER_W,
+                    config = config,
                     stage_id='neck',
                     block_position=i+1+len(fid_list),
                     block_name=middle_op,
@@ -260,10 +253,7 @@ class QSamNeck(DAGBlock):
                     norm=norm,
                     act_func=(act_func, None),
                     # configs
-                    bit_type=config.BIT_TYPE_W,
-                    calibration_mode=config.CALIBRATION_MODE_W,
-                    observer_str=config.OBSERVER_W,
-                    quantizer_str=config.QUANTIZER_W,
+                    config = config,
                     stage_id='neck',
                     block_position=i+len(fid_list),
                     block_name=middle_op,
@@ -277,10 +267,7 @@ class QSamNeck(DAGBlock):
                     norm=norm,
                     act_func=(act_func, None),
                     # configs
-                    bit_type=config.BIT_TYPE_W,
-                    calibration_mode=config.CALIBRATION_MODE_W,
-                    observer_str=config.OBSERVER_W,
-                    quantizer_str=config.QUANTIZER_W,
+                    config = config,
                     stage_id='neck',
                     block_position=i+1+len(fid_list),
                     block_name=middle_op,
@@ -302,10 +289,7 @@ class QSamNeck(DAGBlock):
                         norm=None,
                         act_func=None,
                         # configs
-                        bit_type=config.BIT_TYPE_W,
-                        calibration_mode=config.CALIBRATION_MODE_W,
-                        observer_str=config.OBSERVER_W,
-                        quantizer_str=config.QUANTIZER_W,
+                        config = config,
                         stage_id='neck',
                         block_position=len(fid_list)+head_depth,
                         layer_position=0,

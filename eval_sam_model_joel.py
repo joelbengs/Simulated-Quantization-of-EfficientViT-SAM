@@ -409,7 +409,7 @@ def metadata_to_dataframe(dataframe: pd.DataFrame, args, config, columns) -> pd.
         if isinstance(value, BitType):
             config_as_dict[key] = value.to_dict()
 
-    # save metadata from quantconfig. overwrites the previous loop if conflicting
+    # save metadata from quant config. overwrites the previous loop if conflicting
     for key,val in config_as_dict.items():
         row_data[key] = val
 
@@ -660,26 +660,24 @@ if __name__ == "__main__":
     parser.add_argument("--quantize_A", action="store_true", help="Turn on quantization and calibration for activations")
     parser.add_argument("--quantize_N", action="store_true", help="Turn on quantization and calibration for norms")
 
-    parser.add_argument("--observer_method_W", choices=["minmax", "ema", "omse", "percentile"]) #TODO - implement this
-    parser.add_argument("--observer_method_A", choices=["minmax", "ema", "omse", "percentile"]) #TODO - implement this
-    parser.add_argument("--observer_method_N", choices=["minmax", "ema", "omse", "percentile"]) #TODO - implement this
+    parser.add_argument("--observer_method_W", choices=["minmax", "ema", "omse", "percentile"])
+    parser.add_argument("--observer_method_A", choices=["minmax", "ema", "omse", "percentile"])
+    parser.add_argument("--observer_method_N", choices=["minmax", "ema", "omse", "percentile"])
 
-    parser.add_argument("--quantize_method_W", choices=["uniform", "log2"]) #TODO - implement this
-    parser.add_argument("--quantize_method_A", choices=["uniform", "log2"]) #TODO - implement this
-    parser.add_argument("--quantize_method_N", choices=["uniform", "log2"]) #TODO - implement this
+    parser.add_argument("--quantize_method_W", choices=["uniform", "log2"])
+    parser.add_argument("--quantize_method_A", choices=["uniform", "log2"])
+    parser.add_argument("--quantize_method_N", choices=["uniform", "log2"])
 
-    parser.add_argument("--calibration_mode_W", choices=["layer_wise", "channel_wise"]) #TODO - implement this
-    parser.add_argument("--calibration_mode_A", choices=["layer_wise", "channel_wise"]) #TODO - implement this
-    parser.add_argument("--calibration_mode_N", choices=["layer_wise", "channel_wise"]) #TODO - implement this
+    parser.add_argument("--calibration_mode_W", choices=["layer_wise", "channel_wise"])
+    parser.add_argument("--calibration_mode_A", choices=["layer_wise", "channel_wise"])
+    parser.add_argument("--calibration_mode_N", choices=["layer_wise", "channel_wise"])
 
     parser.add_argument("--plot_distributions", action="store_true", help="monitors and plots distributions of weiights and activations. Must be used with _quant model and should be used with an FP32 backbone")
-
     parser.add_argument("--backbone_version", type=str, default='FP32_baseline')
-
     args = parser.parse_args()
-    # Set args.quantize to True if any of the other quantize arguments are True
-    args.quantize = args.quantize_W or args.quantize_A or args.quantize_N
-    config = Config(args) # quantization configuration
+
+    # Quantization details are built stored in a Config object, passed into the model
+    quant_config = Config(args)
 
     # colums for dataframes when running scripts.
     columns = [
@@ -687,14 +685,14 @@ if __name__ == "__main__":
         "prompt_type",
         "backbone_version",
         "quantize_W",
-        "quantize_A",
         "quantize_N",
+        "quantize_A",
         "observer_method_W",
-        "observer_method_A",
         "observer_method_N",
+        "observer_method_A",
         "quantize_method_W",
-        "quantize_method_A",
         "quantize_method_N",
+        "quantize_method_A",
         "num_click",
         "dataset",
         "dataset_calibration",
@@ -720,7 +718,7 @@ if __name__ == "__main__":
             __builtins__.print(*args, **kwargs)
 
     # model creation
-    efficientvit_sam = create_sam_model(name=args.model, pretrained=True, weight_url=args.weight_url, config=config)
+    efficientvit_sam = create_sam_model(name=args.model, pretrained=True, weight_url=args.weight_url, config=quant_config)
 
     if args.print_torchinfo and local_rank == 0:
         # Use torchinfo.summary to print the model. Depth controls granularity of printout - all params are counted anyhow
@@ -739,7 +737,7 @@ if __name__ == "__main__":
         print(f"The dataloader contains {len(dataloader.dataset)} images from directory {args.dataset}.")
 
     # calibration dataset
-    if args.quantize or args.plot_distributions:
+    if args.quantize_W or args.quantize_A or args.quantize_N or args.plot_distributions:
         calib_dataset = calib_dataset(args.dataset_calibration, args.image_root_calibration, args.prompt_type, args.annotation_json_file, args.source_json_file)
         calib_sampler = DistributedSampler(calib_dataset, shuffle=False)
         calib_dataloader = DataLoader(calib_dataset, batch_size=1, sampler=calib_sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn)
@@ -749,7 +747,7 @@ if __name__ == "__main__":
             efficientvit_sam.toggle_monitor_distributions_on()
 
     # run calibration and toggle quantization on
-    if args.quantize:
+    if args.quantize_W or args.quantize_A or args.quantize_N:
         if args.print_progress:
             print(f"Calibrating image encoder using {args.limit_iterations} samples")
         calibrate_image_encoder(efficientvit_sam, calib_dataloader, args, local_rank)
@@ -780,7 +778,7 @@ if __name__ == "__main__":
     if local_rank == 0:
         if args.export_dataframe:
             df = create_dataframe(args.prompt_type, columns.copy(), args.script_name)
-            df = metadata_to_dataframe(df, args, config, columns)        
+            df = metadata_to_dataframe(df, args, quant_config, columns)        
             df = evaluate_to_dataframe(df, results, args.prompt_type, args.dataset, args.annotation_json_file, args=args)
             print("New row added to results: \n", df.tail(1))
             save_dataframe_to_file(df, args.script_name)

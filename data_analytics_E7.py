@@ -152,5 +152,3 @@ if __name__ == "__main__":
            rotate=True,
            zoom=True,
            )
-
-

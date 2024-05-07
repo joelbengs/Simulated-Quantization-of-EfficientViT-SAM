@@ -29,30 +29,6 @@ models=(
 )
 
 backbone_versions=(
-L0:stage0:0:x
-L0:stage0:1:x
-L0:stage1:0:x
-L0:stage1:1:x
-L0:stage2:0:x
-L0:stage2:1:x
-L0:stage3:0:x
-L0:stage3:1:x
-L0:stage3:2:x
-L0:stage3:3:x
-L0:stage3:4:x
-L0:stage4:0:x
-L0:stage4:1:x
-L0:stage4:2:x
-L0:stage4:3:x
-L0:stage4:4:x
-L0:neck:0:x
-L0:neck:1:x
-L0:neck:2:x
-L0:neck:3:x
-L0:neck:4:x
-L0:neck:5:x
-L0:neck:6:x
-L0:neck:7:x
 L0:stage0:0:0
 L0:stage0:1:0
 L0:stage0:1:1
@@ -124,7 +100,7 @@ L0:neck:6:1
 L0:neck:7:0
 )
 
-echo "--------- STARTING SCRIPT 1---------}"
+echo "--------- STARTING SCRIPT ---------}"
 for bbv in "${backbone_versions[@]}"
 do
   for model in "${models[@]}"
@@ -140,11 +116,11 @@ do
     --annotation_json_file coco/annotations/instances_val2017.json \
     --model $model \
     --limit_iterations 2500 \
-    --prompt_type point_and_box \
+    --prompt_type box \
     --backbone_version $bbv \
     --quantize_W \
+    --quantize_N \
     --quantize_A \
-    --print_progress \
     --export_dataframe \
     --script_name $(basename $0 .sh) # removes the .sh extension and the directory scripts/
     # --limit_iterations 10 \
