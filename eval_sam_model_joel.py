@@ -722,9 +722,6 @@ if __name__ == "__main__":
     # model creation
     efficientvit_sam = create_sam_model(name=args.model, pretrained=True, weight_url=args.weight_url, config=config)
 
-    # statistics
-    # efficientvit_sam.print_named_parameters()
-
     if args.print_torchinfo and local_rank == 0:
         # Use torchinfo.summary to print the model. Depth controls granularity of printout - all params are counted anyhow
         summary(
@@ -748,10 +745,8 @@ if __name__ == "__main__":
         calib_dataloader = DataLoader(calib_dataset, batch_size=1, sampler=calib_sampler, drop_last=False, num_workers=args.num_workers, collate_fn=collate_fn)
         if args.print_progress:
             print(f"The calibration dataloader contains {len(calib_dataloader.dataset)} images from directory {args.dataset_calibration}.")
-
-    # toggle distribution monitor on
-    if args.plot_distributions and local_rank == 0:
-        efficientvit_sam.toggle_monitor_distributions_on()
+        if args.plot_distributions and local_rank == 0:
+            efficientvit_sam.toggle_monitor_distributions_on()
 
     # run calibration and toggle quantization on
     if args.quantize:
@@ -762,6 +757,8 @@ if __name__ == "__main__":
             toggle_operation(efficientvit_sam, 'quant_weights', 'on', args.backbone_version, args.print_progress)
         if args.quantize_A:
             toggle_operation(efficientvit_sam, 'quant_activations', 'on', args.backbone_version, args.print_progress)
+        if args.quantize_N:
+            toggle_operation(efficientvit_sam, 'quant_norms', 'on', args.backbone_version, args.print_progress)
 
     if args.plot_distributions and local_rank == 0:
         full_precision_distribution_analysis(efficientvit_sam)
@@ -774,6 +771,7 @@ if __name__ == "__main__":
     elif args.prompt_type == "box_from_detector":
         results = run_box_from_detector(efficientvit_sam, dataloader, local_rank)
     elif args.prompt_type == "point_and_box":
+        # to benchmark the same calibration over both tasks. No fully optimized: the same image embedding is currently reproduced in both tasks.
         results = [run_point(efficientvit_sam, dataloader, args.num_click, local_rank), run_box(efficientvit_sam, dataloader, local_rank)]
     else:
         raise NotImplementedError(f"The task {args.prompt_type} is not implemented")

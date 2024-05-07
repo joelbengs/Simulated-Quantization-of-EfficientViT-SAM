@@ -534,7 +534,7 @@ class EfficientViTSam(nn.Module):
         self.image_encoder.toggle_selective_attribute(attribute="quant_weights", attribute_goal_state=False, **kwargs,)
 
     ######################################################################
-    #       Toggles functions for quantization - later versions          #
+    #       Toggles functions for quantization - better versions         #
     ######################################################################
 
     ### Simple versions: expects other backbone formats
@@ -561,6 +561,12 @@ class EfficientViTSam(nn.Module):
 
     def simple_toggle_selective_quant_activations_off(self, **kwargs):
         self.image_encoder.simple_toggle_selective_attribute(attribute="quant_activations", attribute_goal_state=False, **kwargs,)
+
+    def simple_toggle_selective_quant_norms_on(self, **kwargs):
+        self.image_encoder.simple_toggle_selective_attribute(attribute="quant_norms", **kwargs,)
+
+    def simple_toggle_selective_quant_norms_off(self, **kwargs):
+        self.image_encoder.simple_toggle_selective_attribute(attribute="quant_norms", attribute_goal_state=False, **kwargs,)
 
     ### statistics
     def toggle_monitor_distributions_on(self, **kwargs):

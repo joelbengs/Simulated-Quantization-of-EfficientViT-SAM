@@ -620,15 +620,24 @@ class QConvLayer(nn.Module):
             norm="bn2d",
             act_func="relu",
             # custom arguments
-            quant_weights=False,
-            quant_activations=False,
-            calibrate=False,
-            last_calibrate=False,
-            monitor_distributions=False,    # makes the observer monitor distributions
-            bit_type=BIT_TYPE_DICT['int8'], # needs expansion into W A N
-            calibration_mode='layer_wise',
-            observer_str='minmax',
-            quantizer_str='uniform',
+            quant_weights=False, # toggles the quantizer of input weights (excluding bias and excluding normalization parameters)
+            quant_norms=False, # toggles the quantizer placed after the normalization layer
+            quant_activations=False, # toggles the quantizer after activation function
+            calibrate=False, # toggle calibration
+            last_calibrate=False, # to make the quantizer fetch the latest params when calibration finishes
+            monitor_distributions=False, # make sure quant is toggled off when monitoring FP32 distributions
+            bit_type_W=BIT_TYPE_DICT['int8'],
+            bit_type_N=BIT_TYPE_DICT['int8'],
+            bit_type_A=BIT_TYPE_DICT['uint8'],
+            observer_str_W='minmax',
+            observer_str_N='minmax',
+            observer_str_A='minmax',
+            quantizer_str_W='uniform',
+            quantizer_str_N='uniform',
+            quantizer_str_A='uniform',
+            calibration_mode_W='layer_wise',
+            calibration_mode_N='layer_wise',
+            calibration_mode_A='layer_wise',
             stage_id='unknown',
             block_position = 'unknown',
             layer_position = 'unknown',
@@ -659,15 +668,24 @@ class QConvLayer(nn.Module):
 
         # Custom arguments
         self.quant_weights = quant_weights
+        self.quant_norms = quant_norms
         self.quant_activations = quant_activations
         self.calibrate = calibrate
         self.last_calibrate = last_calibrate
         self.monitor_distributions=monitor_distributions
 
-        self.bit_type = bit_type
-        self.calibration_mode = calibration_mode
-        self.observer_str = observer_str
-        self.quantizer_str = quantizer_str
+        self.bit_type_W=bit_type_W
+        self.bit_type_N=bit_type_N
+        self.bit_type_A=bit_type_A
+        self.observer_str_W=observer_str_W
+        self.observer_str_N=observer_str_N
+        self.observer_str_A=observer_str_A
+        self.quantizer_str_W=quantizer_str_W
+        self.quantizer_str_N=quantizer_str_N
+        self.quantizer_str_A=quantizer_str_A
+        self.calibration_mode_W = calibration_mode_W
+        self.calibration_mode_N = calibration_mode_N
+        self.calibration_mode_A = calibration_mode_A
         self.module_type = 'conv_weight'
         self.stage_id = stage_id
         self.block_position = block_position
@@ -679,26 +697,41 @@ class QConvLayer(nn.Module):
         self.conv_is_attention_scaling = conv_is_attention_scaling
         self.conv_is_attention_projection = conv_is_attention_projection
 
-        # observer for weights
-        self.weight_observer, self.weight_quantizer = self.build_observer_and_quantizer('weight')
-
-        # observer for post-convolution
-        self.post_mac_observer, self.post_mac_quantizer = self.build_observer_and_quantizer('weight')
+         # observer for weights
+        self.weight_observer, self.weight_quantizer = self.build_observer_and_quantizer(
+            'weight',
+            self.bit_type_W,
+            self.observer_str_W,
+            self.quantizer_str_W,
+            self.calibration_mode_W
+            )
 
          # observer for norms
         if self.norm is not None:
-            self.norm_observer, self.norm_quantizer = self.build_observer_and_quantizer('norm')
+            self.norm_observer, self.norm_quantizer = self.build_observer_and_quantizer(
+                'norm',
+                self.bit_type_N,
+                self.observer_str_N,
+                self.quantizer_str_N,
+                self.calibration_mode_N
+                )
 
         # observer for activations
         if self.act is not None:
-            self.act_observer, self.act_quantizer = self.build_observer_and_quantizer('act')
+            self.act_observer, self.act_quantizer = self.build_observer_and_quantizer(
+                'act',
+                self.bit_type_A,
+                self.observer_str_A,
+                self.quantizer_str_A,
+                self.calibration_mode_A
+                )
 
-    def build_observer_and_quantizer(self, weight_norm_or_act: str):
+    def build_observer_and_quantizer(self, weight_norm_or_act: str, bit_type, observer_str, quantizer_str, calibration_mode):
         observer = build_observer(
-            self.observer_str,
+            observer_str,
             self.module_type, 
-            self.bit_type,
-            self.calibration_mode,
+            bit_type,
+            calibration_mode,
             # kwargs
             stage_id=self.stage_id,
             block_position=self.block_position,
@@ -712,8 +745,8 @@ class QConvLayer(nn.Module):
             weight_norm_or_act=weight_norm_or_act,
         )
         quantizer = build_quantizer(
-            self.quantizer_str,
-            self.bit_type,
+            quantizer_str,
+            bit_type,
             observer,
             self.module_type,
         )
@@ -724,7 +757,7 @@ class QConvLayer(nn.Module):
         if self.monitor_distributions:
             self.weight_observer.store_tensor(self.conv.weight)
 
-        # calibrate weights and activations
+        # calibrate weights
         if self.calibrate:
             self.weight_quantizer.observer.update(self.conv.weight) # for all batches of calibration data: update statistics
             if self.last_calibrate:                          # after the last batch, fetch S and Z of the quantizer
@@ -734,43 +767,45 @@ class QConvLayer(nn.Module):
         if self.dropout is not None:
             x = self.dropout(x)
 
-        # quantization weights
+        # inference weights
         if self.quant_weights:
-            # quant + dequant the weights
             w = self.weight_quantizer(self.conv.weight)
-            # maybe quantize bias as well?
-            # passing the quantized parameters from self.conv to F.conv2d
+            # passing the quantized weights to F.conv2d to bypass initialized conv
             x = F.conv2d(x, w, self.conv.bias, self.conv.stride, self.conv.padding, self.conv.dilation, self.conv.groups)
         else:
             x = self.conv(x)
          
-        # normalization (only monitoring, no quantization)
+        # normalization
         if self.norm:
-            if self.calibrate:
-                self.norm_quantizer.observer.update(x)
             x = self.norm(x)
+
             if self.monitor_distributions:
                 self.norm_observer.store_tensor(x.clone()) # to freely move it between devices in analysis
+            if self.calibrate:
+                self.norm_quantizer.observer.update(x)
+            if self.quant_norms:
+                x = self.norm_quantizer(x)
         
         # activation
         if self.act:
             x = self.act(x)
+
+            if self.monitor_distributions:
+                self.act_observer.store_tensor(x.clone()) # to freely move it between devices in analysis
             if self.calibrate:
                 self.act_quantizer.observer.update(x)
                 if self.last_calibrate:
                     self.act_quantizer.update_quantization_params()
             if self.quant_activations:
                 x = self.act_quantizer(x)
-            if self.monitor_distributions: # make sure quant_activations is turned off when monitoring FP32 distributions
-                self.act_observer.store_tensor(x.clone()) # to freely move it between devices in analysis
 
         return x
     
     def parameter_count(self):
-        # omitting the parameters of the norm layer
+        # omitting the parameters of the norm layer, and bias, since those are not quantized
         num_weights = self.conv.weight.numel()
-        num_biases = self.conv.bias.numel() if self.conv.bias is not None else 0
-        return num_weights + num_biases
+        # num_biases = self.conv.bias.numel() if self.conv.bias is not None else 0
+        return num_weights
 
 
 class QConvLayerV2(nn.Conv2d):
@@ -788,14 +823,23 @@ class QConvLayerV2(nn.Conv2d):
             act_func="relu",
             # custom arguments
             quant_weights=False,
+            quant_norms=False,
             quant_activations=False,
             calibrate=False,
             last_calibrate=False,
             monitor_distributions=False,    # makes the observer monitor distributions
-            bit_type=BIT_TYPE_DICT['int8'],
-            calibration_mode='layer_wise',
-            observer_str='minmax',
-            quantizer_str='uniform',
+           bit_type_W=BIT_TYPE_DICT['int8'],
+            bit_type_N=BIT_TYPE_DICT['int8'],
+            bit_type_A=BIT_TYPE_DICT['uint8'],
+            observer_str_W='minmax',
+            observer_str_N='minmax',
+            observer_str_A='minmax',
+            quantizer_str_W='uniform',
+            quantizer_str_N='uniform',
+            quantizer_str_A='uniform',
+            calibration_mode_W='layer_wise',
+            calibration_mode_N='layer_wise',
+            calibration_mode_A='layer_wise',
             stage_id='unknown',
             block_position = 'unknown',
             layer_position = 'unknown',
@@ -835,15 +879,24 @@ class QConvLayerV2(nn.Conv2d):
 
         # Custom arguments
         self.quant_weights = quant_weights
+        self.quant_norms = quant_norms
         self.quant_activations = quant_activations
         self.calibrate = calibrate
         self.last_calibrate = last_calibrate
         self.monitor_distributions=monitor_distributions
 
-        self.bit_type = bit_type
-        self.calibration_mode = calibration_mode
-        self.observer_str = observer_str
-        self.quantizer_str = quantizer_str
+        self.bit_type_W=bit_type_W
+        self.bit_type_N=bit_type_N
+        self.bit_type_A=bit_type_A
+        self.observer_str_W=observer_str_W
+        self.observer_str_N=observer_str_N
+        self.observer_str_A=observer_str_A
+        self.quantizer_str_W=quantizer_str_W
+        self.quantizer_str_N=quantizer_str_N
+        self.quantizer_str_A=quantizer_str_A
+        self.calibration_mode_W = calibration_mode_W
+        self.calibration_mode_N = calibration_mode_N
+        self.calibration_mode_A = calibration_mode_A
         self.module_type = 'conv_weight'
         self.stage_id = stage_id
         self.block_position = block_position
@@ -856,22 +909,40 @@ class QConvLayerV2(nn.Conv2d):
         self.conv_is_attention_projection = conv_is_attention_projection
 
         # observer for weights
-        self.weight_observer, self.weight_quantizer = self.build_observer_and_quantizer('weight')
+        self.weight_observer, self.weight_quantizer = self.build_observer_and_quantizer(
+            'weight',
+            self.bit_type_W,
+            self.observer_str_W,
+            self.quantizer_str_W,
+            self.calibration_mode_W
+            )
 
          # observer for norms
         if self.norm is not None:
-            self.norm_observer, self.norm_quantizer = self.build_observer_and_quantizer('norm')
+            self.norm_observer, self.norm_quantizer = self.build_observer_and_quantizer(
+                'norm',
+                self.bit_type_N,
+                self.observer_str_N,
+                self.quantizer_str_N,
+                self.calibration_mode_N
+                )
 
         # observer for activations
         if self.act is not None:
-            self.act_observer, self.act_quantizer = self.build_observer_and_quantizer('act')
+            self.act_observer, self.act_quantizer = self.build_observer_and_quantizer(
+                'act',
+                self.bit_type_A,
+                self.observer_str_A,
+                self.quantizer_str_A,
+                self.calibration_mode_A
+                )
 
-    def build_observer_and_quantizer(self, weight_norm_or_act):
+    def build_observer_and_quantizer(self, weight_norm_or_act: str, bit_type, observer_str, quantizer_str, calibration_mode):
         observer = build_observer(
-            self.observer_str,
+            observer_str,
             self.module_type, 
-            self.bit_type,
-            self.calibration_mode,
+            bit_type,
+            calibration_mode,
             # kwargs
             stage_id=self.stage_id,
             block_position=self.block_position,
@@ -885,8 +956,8 @@ class QConvLayerV2(nn.Conv2d):
             weight_norm_or_act=weight_norm_or_act,
         )
         quantizer = build_quantizer(
-            self.quantizer_str,
-            self.bit_type,
+            quantizer_str,
+            bit_type,
             observer,
             self.module_type,
         )
@@ -919,27 +990,34 @@ class QConvLayerV2(nn.Conv2d):
         # normalization
         if self.norm:
             x = self.norm(x)
+
             if self.monitor_distributions:
                 self.norm_observer.store_tensor(x.clone()) # to freely move it between devices in analysis
+            if self.calibrate:
+                self.norm_quantizer.observer.update(x)
+            if self.quant_norms:
+                x = self.norm_quantizer(x)
         
         # activation
         if self.act:
             x = self.act(x)
+
+            if self.monitor_distributions:
+                self.act_observer.store_tensor(x.clone()) # to freely move it between devices in analysis
             if self.calibrate:
                 self.act_quantizer.observer.update(x)
                 if self.last_calibrate:
                     self.act_quantizer.update_quantization_params()
             if self.quant_activations:
                 x = self.act_quantizer(x)
-            if self.monitor_distributions:
-                self.act_observer.store_tensor(x.clone()) # to freely move it between devices in analysis
 
         return x
 
     def parameter_count(self):
-        num_weights = self.weight.numel()
-        num_biases = self.bias.numel() if self.bias is not None else 0
-        return num_weights + num_biases
+        # omitting the parameters of the norm layer, and bias, since those are not quantized
+        num_weights = self.conv.weight.numel()
+        # num_biases = self.conv.bias.numel() if self.conv.bias is not None else 0
+        return num_weights
 
 
 # Not updated since not in use

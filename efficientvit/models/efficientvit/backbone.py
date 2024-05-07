@@ -661,11 +661,19 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                 stride=2,                   # Stride 2
                 norm=norm,
                 act_func=act_func,
-                 # configs
-                bit_type=self.config.BIT_TYPE_W,
-                calibration_mode=self.config.CALIBRATION_MODE_W,
-                observer_str=self.config.OBSERVER_W,
-                quantizer_str=self.config.QUANTIZER_W,
+                 # configs¨
+                bit_type_W=self.config.BIT_TYPE_W,
+                bit_type_N=self.config.BIT_TYPE_N,
+                bit_type_A=self.config.BIT_TYPE_A,
+                observer_str_W=self.config.OBSERVER_W,
+                observer_str_N=self.config.OBSERVER_N,
+                observer_str_A=self.config.OBSERVER_A,
+                quantizer_str_W=self.config.QUANTIZER_W,
+                quantizer_str_N=self.config.QUANTIZER_N,
+                quantizer_str_A=self.config.QUANTIZER_A,
+                calibration_mode_W = self.config.CALIBRATION_MODE_W,
+                calibration_mode_N = self.config.CALIBRATION_MODE_N,
+                calibration_mode_A = self.config.CALIBRATION_MODE_A,
                 stage_id="stage0",
                 block_position=0,            # block position within the stage
                 layer_position=0,
@@ -694,6 +702,7 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                 block_position=i+1,              # block position within the stage
                 block_name=block_list[0],        # res, passed to the QConvLayer
                 block_is_bottleneck=False,
+                
             )
             stage0.append(ResidualBlock(block, IdentityLayer())) # residual connection for each block
         # save the channel depth at output of the stem
@@ -746,10 +755,18 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                             scales=(3,) if block_list[stage_id] == "att@3" else (5,), # XL-models ONLY use 3scaling, all other only use 5-scaling
                             norm=norm,
                             act_func=act_func,
-                            bit_type=self.config.BIT_TYPE_W,
-                            calibration_mode=self.config.CALIBRATION_MODE_W,
-                            observer_str=self.config.OBSERVER_W,
-                            quantizer_str=self.config.QUANTIZER_W,
+                            bit_type_W=self.config.BIT_TYPE_W,
+                            bit_type_N=self.config.BIT_TYPE_N,
+                            bit_type_A=self.config.BIT_TYPE_A,
+                            observer_str_W=self.config.OBSERVER_W,
+                            observer_str_N=self.config.OBSERVER_N,
+                            observer_str_A=self.config.OBSERVER_A,
+                            quantizer_str_W=self.config.QUANTIZER_W,
+                            quantizer_str_N=self.config.QUANTIZER_N,
+                            quantizer_str_A=self.config.QUANTIZER_A,
+                            calibration_mode_W = self.config.CALIBRATION_MODE_W,
+                            calibration_mode_N = self.config.CALIBRATION_MODE_N,
+                            calibration_mode_A = self.config.CALIBRATION_MODE_A,
                             stage_id="stage%d" % stage_id,
                             block_position=i+1,
                             block_name=block_list[stage_id],
