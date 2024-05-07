@@ -1119,6 +1119,16 @@ class QMBConv(nn.Module):
             layer_position=layer_positions[1],
             **kwargs, # config arguments
         )
+        '''        self.depth_conv = ConvLayer(
+            mid_channels,
+            mid_channels,
+            kernel_size,
+            stride=stride,
+            groups=mid_channels,
+            norm=norm[1],
+            act_func=act_func[1],
+            use_bias=use_bias[1],
+        )'''
         self.point_conv = QConvLayer(
             mid_channels,
             out_channels,
@@ -1131,7 +1141,7 @@ class QMBConv(nn.Module):
         )
 
         # Used for testing a model with this layer in FP32
-        '''self.point_conv = ConvLayer(
+        '''        self.point_conv = ConvLayer(
             mid_channels,
             out_channels,
             1,
