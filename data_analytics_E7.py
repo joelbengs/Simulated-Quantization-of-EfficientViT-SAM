@@ -44,6 +44,9 @@ if __name__ == "__main__":
 
     #print(selected_data.to_string(index=False))
 
+    # needed if only running box experiment
+    df = df.rename(columns={'all': 'box_all'})
+
     ################################
     ###  Experiment 7 - simualted activation quantization       ###
     ################################
@@ -120,14 +123,14 @@ if __name__ == "__main__":
     df_layer = df_layer[~df_layer['backbone_version'].str.endswith('x')] # remove blockwise experiments
 
     plot(df_block,
-           title='Block-wise analysis of weight+activation quantization to INT8 of EfficientViT-SAM L0 image encoder',
+           title='Block-wise analysis of weight+norm+activation quantization to INT8 of EfficientViT-SAM L0 image encoder',
             xlabel='L0 base model with only one block quantized. All layers of the block are quantized',
             name=f'{args.file_name}_block',
             performance_measure = "box_all",
             )
     
     plot(df_layer,
-           title='Layer-wise analysis of weight+activation quantization to INT8 of EfficientViT-SAM L0 image encoder',
+           title='Layer-wise analysis of weight+norm+activation quantization to INT8 of EfficientViT-SAM L0 image encoder',
            xlabel='L0 base model with only one layer quantized. Naming scheme is stage:block:layer',
            name=f'{args.file_name}_layer',
            performance_measure = "box_all",
@@ -136,7 +139,7 @@ if __name__ == "__main__":
            )
     
     plot(df_block,
-           title='Block-wise analysis of weight+activation quantization to INT8 of EfficientViT-SAM L0 image encoder',
+           title='Block-wise analysis of weight+norm+activation quantization to INT8 of EfficientViT-SAM L0 image encoder',
             xlabel='L0 base model with only one block quantized. All layers of the block are quantized',
             name=f'{args.file_name}_block_zoom',
             performance_measure = "box_all",
@@ -144,7 +147,7 @@ if __name__ == "__main__":
             )
     
     plot(df_layer,
-           title='Layer-wise analysis of weight+activation quantization to INT8 of EfficientViT-SAM L0 image encoder',
+           title='Layer-wise analysis of weight+norm+activation quantization to INT8 of EfficientViT-SAM L0 image encoder',
            xlabel='L0 base model with only one layer quantized. Naming scheme is stage:block:layer',
            name=f'{args.file_name}_layer_zoom',
            performance_measure = "box_all",
