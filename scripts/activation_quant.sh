@@ -100,6 +100,10 @@ L0:neck:6:1
 L0:neck:7:0
 )
 
+backbone_versions=(
+L0:stage4:1:3
+)
+
 echo "--------- STARTING SCRIPT ---------}"
 for bbv in "${backbone_versions[@]}"
 do
@@ -115,13 +119,12 @@ do
     --image_root_calibration sa-1b \
     --annotation_json_file coco/annotations/instances_val2017.json \
     --model $model \
-    --limit_iterations 2500 \
+    --limit_iterations 10 \
     --prompt_type box \
     --backbone_version $bbv \
     --quantize_W \
     --quantize_N \
     --quantize_A \
-    --export_dataframe \
     --script_name $(basename $0 .sh) # removes the .sh extension and the directory scripts/
     # --limit_iterations 10 \
     # --export_dataframe \

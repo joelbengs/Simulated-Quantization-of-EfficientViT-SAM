@@ -397,7 +397,7 @@ class EfficientViTSamImageEncoder(nn.Module):
         count_all = count_candidates = count_affected = 0
         for m in self.modules():
             count_all = count_all + 1
-            if type(m) in [QConvLayer, QConvLayerV2]:
+            if type(m) in [QConvLayer, QConvLayerV2, QLiteMLA]:
                 count_candidates = count_candidates + 1
                 if m.stage_id in stages:
                     if m.block_position in block_positions:

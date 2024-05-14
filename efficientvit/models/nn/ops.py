@@ -598,6 +598,7 @@ class OpSequential(nn.Module):
 #                          Quantized Basic Layers                               #
 #################################################################################
 
+
 # Implementaiton inspired by QConv2d from FQ-ViT/models/ptq/layers.py    
 ### REMEBER TO CHECK SO THAT BOTH THIS ONE AND V2 ARE UP TO DATE WITH EACH OTHER
 '''
@@ -1080,48 +1081,59 @@ class QMBConv(nn.Module):
             layer_position=layer_positions[0],
             **kwargs, # config arguments
         )
-        self.depth_conv = QConvLayer(
-            mid_channels,
-            mid_channels,
-            kernel_size,
-            stride=stride,
-            groups=mid_channels,
-            norm=norm[1],
-            act_func=act_func[1],
-            use_bias=use_bias[1],
-            layer_position=layer_positions[1],
-            **kwargs, # config arguments
-        )
-        '''        self.depth_conv = ConvLayer(
-            mid_channels,
-            mid_channels,
-            kernel_size,
-            stride=stride,
-            groups=mid_channels,
-            norm=norm[1],
-            act_func=act_func[1],
-            use_bias=use_bias[1],
-        )'''
-        self.point_conv = QConvLayer(
-            mid_channels,
-            out_channels,
-            1,
-            norm=norm[2],
-            act_func=act_func[2],
-            use_bias=use_bias[2],
-            layer_position=layer_positions[2],
-            **kwargs, # config arguments
-        )
 
-        # Used for testing a model with this layer in FP32
-        '''        self.point_conv = ConvLayer(
-            mid_channels,
-            out_channels,
-            1,
-            norm=norm[2],
-            act_func=act_func[2],
-            use_bias=use_bias[2],
-        )'''
+        # layer-wise analysis showed these layers to be sensitive to quantization.
+        # Toggle her to experiment with them protected
+        # note that they will not show up in printouts, since printouts iterate over instances of QConvLayer
+        protect_sensitive_depthwise_conv_to_FP32 = True
+        if protect_sensitive_depthwise_conv_to_FP32:
+                self.depth_conv = ConvLayer(
+                mid_channels,
+                mid_channels,
+                kernel_size,
+                stride=stride,
+                groups=mid_channels,
+                norm=norm[1],
+                act_func=act_func[1],
+                use_bias=use_bias[1],
+            )
+        else:
+            self.depth_conv = QConvLayer(
+                mid_channels,
+                mid_channels,
+                kernel_size,
+                stride=stride,
+                groups=mid_channels,
+                norm=norm[1],
+                act_func=act_func[1],
+                use_bias=use_bias[1],
+                layer_position=layer_positions[1],
+                **kwargs, # config arguments
+            )
+
+        # this layer was also found to be sensitive
+        protect_sensitive_pointwise_conv_to_FP32 = True
+        if protect_sensitive_pointwise_conv_to_FP32:
+            self.point_conv = ConvLayer(
+                mid_channels,
+                out_channels,
+                1,
+                norm=norm[2],
+                act_func=act_func[2],
+                use_bias=use_bias[2],
+            )
+        else:
+            self.point_conv = QConvLayer(
+                mid_channels,
+                out_channels,
+                1,
+                norm=norm[2],
+                act_func=act_func[2],
+                use_bias=use_bias[2],
+                layer_position=layer_positions[2],
+                **kwargs, # config arguments
+            )
+
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.inverted_conv(x)
@@ -1231,7 +1243,6 @@ class QResBlock(nn.Module):
         return x
 
 # Not used in backbone.py directly, only via QEfficientVitBlock
-# Not Quantized yet!
 class QLiteMLA(nn.Module):
     r"""Lightweight multi-scale linear attention"""
 
@@ -1244,13 +1255,35 @@ class QLiteMLA(nn.Module):
         dim=8,
         use_bias=False,
         norm=(None, "bn2d"),
-        act_func=(None, None),
+        act_func=(None, None), # Gelu passed in implicitly via kwargs
         kernel_func="relu",
         scales: tuple[int, ...] = (5,), # hinting that it should be a tuple of integers, and initializing it with a tuple containing the single integer 5. XL-models have (3,) for some layers. Large models have (5,)
         eps=1.0e-15,
         **kwargs,
     ):
         super().__init__()
+
+        try:
+            # A special implementatin because the framework was designed to only place quantizers in the QConvLayer. Here we hijack the arguments
+            self.config = kwargs.get('config')
+            self.quant_activations=False
+            self.calibrate=False
+            self.last_calibrate=False
+            self.monitor_distributions=False
+            self.module_type='activation' # used in class BaseObserver to reshape tensors correctly
+            self.stage_id=kwargs.get('stage_id')
+            self.block_position=kwargs.get('block_position')
+            self.layer_position=3 # inside each EfficientViT module, we number the Self-attention part 3 as it follows convolution number 0, 1 and 2.
+            self.block_name=kwargs.get('block_name')
+            self.block_is_bottleneck=kwargs.get('block_is_bottleneck')
+            self.block_is_neck=False
+            self.conv_is_attention_qkv=False
+            self.conv_is_attention_scaling=False
+            self.conv_is_attention_projection=False
+        except KeyError:
+            print("a config object was not passed to QLiteMLA as expected")
+
+
         self.eps = eps
         heads = heads or int(in_channels // dim * heads_ratio)
 
@@ -1258,12 +1291,12 @@ class QLiteMLA(nn.Module):
 
         use_bias = val2tuple(use_bias, 2)
         norm = val2tuple(norm, 2)
-        act_func = val2tuple(act_func, 2)
+        act_func = val2tuple(act_func, 2) # gelu, gelu
 
         self.dim = dim
         self.qkv = QConvLayer(
             in_channels,
-            3 * total_dim,
+            3 * total_dim, # we need to generate three different matrices (Q, K, V) each of total_dim dimensions. We then split it in three parts
             1,
             use_bias=use_bias[0], # False
             norm=norm[0],         # override to b2nd
@@ -1274,9 +1307,13 @@ class QLiteMLA(nn.Module):
         )
 
         '''
-        The pretrained weights have state keys on the form aggreg.0.0.weights, because here nn.Conv2D was used directly unlike elsewhere in EfficientViT
+        Explanation for QConvLayer vs QConvLayerV2:
+        The pretrained weights have state keys on the form aggreg.0.0.weights, because here nn.Conv2D was used directly unlike elsewhere in EfficientViT.
         Using QConvLayer(nn.Module) causes state dict keys on the form aggreg.0.0.conv.weights, because the nn.Conv2D is an attribute named conv in the module.
-        One solution is to rebuild QConvLayer to inherit from nn.Conv2D instead of nn.Module, but this might alter other state keys in the model.'''
+        One solution is to rebuild QConvLayer to inherit from nn.Conv2D instead of nn.Module, but this might alter other state keys in the model.
+        Therefore we use a V2 implementation of QConvLayer, which inherits nn.Conv2D directly instead of nn.Module
+        '''
+        # Multi scale linear attention
         self.aggreg = nn.ModuleList(
             [
                 nn.Sequential(
@@ -1310,7 +1347,7 @@ class QLiteMLA(nn.Module):
             ]
         )
 
-        self.kernel_func = build_act(kernel_func, inplace=False)
+        self.kernel_func = build_act(kernel_func, inplace=False) # relu, not overriden to anything else
 
         self.proj = QConvLayer(
             total_dim * (1 + len(scales)),
@@ -1323,6 +1360,41 @@ class QLiteMLA(nn.Module):
             layer_position=3,
             **kwargs, # config arguments
         )
+
+        # observer for attention activations. There weights are dealt with inside the QConvLayer of self.qkv 
+        self.act_observer, self.act_quantizer = self.build_observer_and_quantizer(
+            'act', # used in class BaseObserver for distrubution monitoring
+            self.config.BIT_TYPE_A,
+            self.config.OBSERVER_A,
+            self.config.QUANTIZER_A,
+            self.config.CALIBRATION_MODE_A,
+            )
+
+    def build_observer_and_quantizer(self, weight_norm_or_act: str, bit_type, observer_str, quantizer_str, calibration_mode):
+        observer = build_observer(
+            observer_str,
+            self.module_type, 
+            bit_type,
+            calibration_mode,
+            # kwargs
+            stage_id=self.stage_id,
+            block_position=self.block_position,
+            layer_position=self.layer_position,
+            block_name=self.block_name,
+            block_is_bottleneck=self.block_is_bottleneck,
+            block_is_neck=self.block_is_neck,
+            conv_is_attention_qkv=self.conv_is_attention_qkv,
+            conv_is_attention_scaling=self.conv_is_attention_scaling,
+            conv_is_attention_projection=self.conv_is_attention_projection,
+            weight_norm_or_act=weight_norm_or_act,
+        )
+        quantizer = build_quantizer(
+            quantizer_str,
+            bit_type,
+            observer,
+            self.module_type,
+        )
+        return observer, quantizer
 
     @autocast(enabled=False)
     def relu_linear_att(self, qkv: torch.Tensor) -> torch.Tensor:
@@ -1347,16 +1419,19 @@ class QLiteMLA(nn.Module):
             qkv[..., 2 * self.dim :],
         )
 
-        # lightweight linear attention
+        # lightweight linear attention?
         q = self.kernel_func(q) # ReLu nn.Module
         k = self.kernel_func(k) # ReLu nn.Module
 
-        # linear matmul
         trans_k = k.transpose(-1, -2)
-
         v = F.pad(v, (0, 1), mode="constant", value=1)
+
+        # matmul k and v
         kv = torch.matmul(trans_k, v)
+        # matmul q and (kv)
         out = torch.matmul(q, kv)
+
+        # normalization?
         out = out[..., :-1] / (out[..., -1:] + self.eps)
 
         out = torch.transpose(out, -1, -2)
@@ -1364,15 +1439,24 @@ class QLiteMLA(nn.Module):
         return out
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # generate multi-scale q, k, v
-        qkv = self.qkv(x)
-        multi_scale_qkv = [qkv]
-        for op in self.aggreg:
+        
+        qkv = self.qkv(x) # generate no-scale q, k, v from the input tensor x.
+        multi_scale_qkv = [qkv] # initiate a list with only the no-scale qkv.
+        for op in self.aggreg: # returns the nn.Sequential, not the individual QConvLayers. Only once (since there is only one scale)
             multi_scale_qkv.append(op(qkv))
-        multi_scale_qkv = torch.cat(multi_scale_qkv, dim=1)
+        multi_scale_qkv = torch.cat(multi_scale_qkv, dim=1) # concatenates the no-scale and the scaled qkv matrix to one tensor
+        out = self.relu_linear_att(multi_scale_qkv)  # runs the tensor through the relu linear attention. For clarity, we visualize this as seperate attention modules, but the code implements only one module after concatenation.
 
-        out = self.relu_linear_att(multi_scale_qkv)
-        out = self.proj(out)
+        # quantization
+        if self.monitor_distributions:
+            self.act_observer.store_tensor(out.clone()) # to freely move it between devices in analysis
+        if self.calibrate:
+            self.act_quantizer.observer.update(out)
+            if self.last_calibrate:
+                self.act_quantizer.update_quantization_params()
+        if self.quant_activations:
+            out = self.act_quantizer(out)
+        out = self.proj(out) # runs it through projection
 
         return out
 
@@ -1384,9 +1468,9 @@ class QEfficientViTBlock(nn.Module):
         heads_ratio: float = 1.0,
         dim=32,
         expand_ratio: float = 4,
-        scales=(5,),            #XL-models have (3,) for some layers. Large models have (5,)
+        scales=(5,), #XL-models have (3,) for some layers. Large models have (5,)
         norm="bn2d",
-        act_func="hswish",
+        act_func="hswish", # override to gelu
         **kwargs,
     ):
         super().__init__()
