@@ -321,6 +321,8 @@ class EfficientViTSamImageEncoder(nn.Module):
         output = self.norm(output)
         return output
 
+
+    '''
     # quantizes only specificed parts. Can be specified by stages, by block names, by the intersection of both. Can be specified to save bottlenecks
     # toggle the specified attribute for all modules in the intersection of stages and blocknames.
     # Exclude the 
@@ -380,6 +382,7 @@ class EfficientViTSamImageEncoder(nn.Module):
             if spare_attention_projection:
                 spared_parts.append('attention projection')
             print(f"Spared parts: {', '.join(spared_parts)}" if spared_parts else "Did not spare any parts.")
+    '''
 
     def simple_toggle_selective_attribute(
             self, 
@@ -387,7 +390,7 @@ class EfficientViTSamImageEncoder(nn.Module):
             attribute_goal_state=True,
             printout=False,
             stages=None, #required: format [string, string, string]
-            block_positions=None, #required: format [int, int, int]
+            block_positions=None, #optional: format [int, int, int]
             layer_positions=None, #optional: format [int, int, int]
             ):
 
@@ -400,14 +403,14 @@ class EfficientViTSamImageEncoder(nn.Module):
             if type(m) in [QConvLayer, QConvLayerV2, QLiteMLA]:
                 count_candidates = count_candidates + 1
                 if m.stage_id in stages:
-                    if m.block_position in block_positions:
+                    if m.block_position is None or m.block_position in block_positions:
                         if layer_positions is None or m.layer_position in layer_positions:
                             if hasattr(m, attribute):
                                 setattr(m, attribute, attribute_goal_state)
                                 count_affected = count_affected + 1
                                 if printout: print(f"{attribute} == {attribute_goal_state} for {m.block_name}-layer with id {m.stage_id}:{m.block_position}:{m.layer_position}", f"                module {count_all} of type {type(m)}:")
                             else:
-                                print(f"Warning: {attribute} does not exist in {m}")
+                                print(f"Warning: {attribute} does not exist in module: {m}")
                         else:
                             if printout: print(f"Attribute {attribute} on module {m.stage_id}:{m.block_position}:{m.layer_position} was not affected due to layer condition", f"                module {count_all} of type {type(m)}:")
                     else:
@@ -468,7 +471,7 @@ class EfficientViTSam(nn.Module):
     ######################################################################
     #       Toggles functions for quantization - early versions          #
     ######################################################################
-
+    '''
     def toggle_calibrate_on(self):
         for m in self.image_encoder.modules():
             if type(m) in [QConvLayer, QConvLayerV2]:
@@ -516,40 +519,40 @@ class EfficientViTSam(nn.Module):
 
     def toggle_selective_quant_off(self, **kwargs):
         self.image_encoder.toggle_selective_attribute(attribute="quant_weights", attribute_goal_state=False, **kwargs,)
-
+    '''
     ######################################################################
     #       Toggles functions for quantization - better versions         #
     ######################################################################
 
     ### Simple versions: expects other backbone formats
-    def simple_toggle_selective_calibrate_on(self, **kwargs):
+    def toggle_selective_calibrate_on(self, **kwargs):
         self.image_encoder.simple_toggle_selective_attribute(attribute="calibrate", **kwargs,)
         
-    def simple_toggle_selective_calibrate_off(self, **kwargs):
+    def toggle_selective_calibrate_off(self, **kwargs):
         self.image_encoder.simple_toggle_selective_attribute(attribute="calibrate", attribute_goal_state=False, **kwargs,)
 
-    def simple_toggle_selective_last_calibrate_on(self, **kwargs):
+    def toggle_selective_last_calibrate_on(self, **kwargs):
         self.image_encoder.simple_toggle_selective_attribute(attribute="last_calibrate", **kwargs,)
     
-    def simple_toggle_selective_last_calibrate_off(self, **kwargs):
+    def toggle_selective_last_calibrate_off(self, **kwargs):
         self.image_encoder.simple_toggle_selective_attribute(attribute="last_calibrate", attribute_goal_state=False, **kwargs,)
 
-    def simple_toggle_selective_quant_weights_on(self, **kwargs):
+    def toggle_selective_quant_weights_on(self, **kwargs):
         self.image_encoder.simple_toggle_selective_attribute(attribute="quant_weights", **kwargs,)
 
-    def simple_toggle_selective_quant_weights_off(self, **kwargs):
+    def toggle_selective_quant_weights_off(self, **kwargs):
         self.image_encoder.simple_toggle_selective_attribute(attribute="quant_weights", attribute_goal_state=False, **kwargs,)
 
-    def simple_toggle_selective_quant_activations_on(self, **kwargs):
+    def toggle_selective_quant_activations_on(self, **kwargs):
         self.image_encoder.simple_toggle_selective_attribute(attribute="quant_activations", **kwargs,)
 
-    def simple_toggle_selective_quant_activations_off(self, **kwargs):
+    def toggle_selective_quant_activations_off(self, **kwargs):
         self.image_encoder.simple_toggle_selective_attribute(attribute="quant_activations", attribute_goal_state=False, **kwargs,)
 
-    def simple_toggle_selective_quant_norms_on(self, **kwargs):
+    def toggle_selective_quant_norms_on(self, **kwargs):
         self.image_encoder.simple_toggle_selective_attribute(attribute="quant_norms", **kwargs,)
 
-    def simple_toggle_selective_quant_norms_off(self, **kwargs):
+    def toggle_selective_quant_norms_off(self, **kwargs):
         self.image_encoder.simple_toggle_selective_attribute(attribute="quant_norms", attribute_goal_state=False, **kwargs,)
 
     ### statistics

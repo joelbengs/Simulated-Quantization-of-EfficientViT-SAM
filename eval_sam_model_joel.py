@@ -12,7 +12,6 @@ import numpy as np
 import pandas as pd
 import torch
 from configs.quant_backbones_zoo import REGISTERED_BACKBONE_VERSIONS
-from configs.quant_backbones_zoo import SIMPLE_REGISTERED_BACKBONE_VERSIONS
 from efficientvit.models.nn.ops import QConvLayer, QConvLayerV2
 from efficientvit.models.ptq.bit_type import BitType
 from efficientvit.models.ptq.observer.base import BaseObserver
@@ -430,63 +429,6 @@ def toggle_operation(efficientvit_sam, operation, state, backbone_version='FP32_
         raise ValueError("State must be either 'on' or 'off'")
     if backbone_version in REGISTERED_BACKBONE_VERSIONS:
         getattr(efficientvit_sam, f'toggle_selective_{operation}_{state}')(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
-    elif backbone_version in SIMPLE_REGISTERED_BACKBONE_VERSIONS:
-        getattr(efficientvit_sam, f'simple_toggle_selective_{operation}_{state}')(printout=printout, **SIMPLE_REGISTERED_BACKBONE_VERSIONS[backbone_version])
-    else:
-        raise NotImplementedError("Backbone version not yet implemented")
-    
-### These are maybe not in use anymore?
-def calibrate_on(efficientvit_sam, backbone_version='0', print_progress=False):
-    printout=(local_rank==0 and print_progress is True)
-    if backbone_version == '0':
-        efficientvit_sam.toggle_calibrate_on()
-    elif backbone_version in REGISTERED_BACKBONE_VERSIONS:
-        efficientvit_sam.toggle_selective_calibrate_on(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
-    else:
-        raise NotImplementedError("Backbone version not yet implemented")
-
-def calibrate_off(efficientvit_sam, backbone_version='0', print_progress=False):
-    printout=(local_rank==0 and suppress_print is False)
-    if backbone_version == '0':
-        efficientvit_sam.toggle_calibrate_off()
-    elif backbone_version in REGISTERED_BACKBONE_VERSIONS:
-        efficientvit_sam.toggle_selective_calibrate_off(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
-    else:
-        raise NotImplementedError("Backbone version not yet implemented")
-    
-def last_calibrate_on(efficientvit_sam, backbone_version='0', print_progress=False):
-    printout=(local_rank==0 and print_progress is True)
-    if backbone_version == '0':
-        efficientvit_sam.toggle_last_calibrate_on()
-    elif backbone_version in REGISTERED_BACKBONE_VERSIONS:
-        efficientvit_sam.toggle_selective_last_calibrate_on(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
-    else:
-        raise NotImplementedError("Backbone version not yet implemented")
-
-def last_calibrate_off(efficientvit_sam, backbone_version='0', print_progress=False):
-    printout=(local_rank==0 and suppress_print is False)
-    if backbone_version == '0':
-        efficientvit_sam.toggle_last_calibrate_off()
-    elif backbone_version in REGISTERED_BACKBONE_VERSIONS:
-        efficientvit_sam.toggle_selective_last_calibrate_off(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
-    else:
-        raise NotImplementedError("Backbone version not yet implemented")
-
-def quantize_on(efficientvit_sam, backbone_version='0', print_progress=False):
-    printout=(local_rank==0 and print_progress is True)
-    if backbone_version == '0':
-        efficientvit_sam.toggle_quant_on()
-    elif backbone_version in REGISTERED_BACKBONE_VERSIONS:
-        efficientvit_sam.toggle_selective_quant_on(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
-    else:
-        raise NotImplementedError("Backbone version not yet implemented")
-
-def quantize_off(efficientvit_sam, backbone_version='0', print_progress=False):
-    printout=(local_rank==0 and suppress_print is False)
-    if backbone_version == '0':
-        efficientvit_sam.toggle_quant_off()
-    elif backbone_version in REGISTERED_BACKBONE_VERSIONS:
-        efficientvit_sam.toggle_selective_quant_off(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
     else:
         raise NotImplementedError("Backbone version not yet implemented")
 

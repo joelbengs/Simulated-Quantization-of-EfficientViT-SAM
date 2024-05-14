@@ -1064,9 +1064,9 @@ class QMBConv(nn.Module):
         act_func = val2tuple(act_func, 3)
         mid_channels = mid_channels or round(in_channels * expand_ratio)
 
-        # if this QMBConv follows after a LiteMultiscaleAttention module, it will have layer indexes 4,5,6
+        # if this QMBConv follows after a LiteMultiscaleAttention module, it will have layer indexes 5,6,7
         if part_of_efficientViT_module:
-            layer_positions = [4,5,6]
+            layer_positions = [3,4,5]
         else:
             layer_positions = [0,1,2]
 
@@ -1273,7 +1273,7 @@ class QLiteMLA(nn.Module):
             self.module_type='activation' # used in class BaseObserver to reshape tensors correctly
             self.stage_id=kwargs.get('stage_id')
             self.block_position=kwargs.get('block_position')
-            self.layer_position=3 # inside each EfficientViT module, we number the Self-attention part 3 as it follows convolution number 0, 1 and 2.
+            self.layer_position=1 # inside each EfficientViT module, we number the Self-attention part 1 as it follows convolution number 0 (the QKV generation + multi-scale convs are considered as one)
             self.block_name=kwargs.get('block_name')
             self.block_is_bottleneck=kwargs.get('block_is_bottleneck')
             self.block_is_neck=False
@@ -1327,7 +1327,7 @@ class QLiteMLA(nn.Module):
                         norm=None,
                         act_func=None,
                         conv_is_attention_scaling=True,
-                        layer_position=1,
+                        layer_position=0,
                         **kwargs, # config arguments
                     ),
                     QConvLayerV2(
@@ -1339,7 +1339,7 @@ class QLiteMLA(nn.Module):
                         norm=None,
                         act_func=None,
                         conv_is_attention_scaling=True,
-                        layer_position=2,
+                        layer_position=0,
                         **kwargs, # config arguments
                     )
                 )
@@ -1357,7 +1357,7 @@ class QLiteMLA(nn.Module):
             norm=norm[1],         # override to bn2d
             act_func=act_func[1], # override to gelu
             conv_is_attention_projection=True,
-            layer_position=3,
+            layer_position=2,
             **kwargs, # config arguments
         )
 
