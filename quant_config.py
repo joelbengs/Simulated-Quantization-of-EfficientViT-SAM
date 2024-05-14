@@ -22,7 +22,7 @@ class Config:
         self.QUANTIZER_A = args.quantize_method_A if args.quantize_method_A is not None else 'uniform'
 
         # choices=['layer_wise', 'channel_wise']
-        self.CALIBRATION_MODE_W = args.calibration_mode_W if args.calibration_mode_W is not None else 'layer_wise'
+        self.CALIBRATION_MODE_W = args.calibration_mode_W if args.calibration_mode_W is not None else 'channel_wise'
         self.CALIBRATION_MODE_N = args.calibration_mode_N if args.calibration_mode_N is not None else 'layer_wise'
         self.CALIBRATION_MODE_A = args.calibration_mode_A if args.calibration_mode_A is not None else 'layer_wise'
 

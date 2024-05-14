@@ -361,12 +361,13 @@ do
   --image_root_calibration sa-1b \
   --annotation_json_file coco/annotations/instances_val2017.json \
   --model $model \
-  --limit_iterations 10 \
+  --limit_iterations 2500 \
   --prompt_type box \
   --backbone_version $backbone_item \
   --quantize_W \
   --quantize_N \
   --quantize_A \
+  --calibration_mode_W channel_wise \
   --export_dataframe \
   --script_name $model
   # --limit_iterations 10 \
@@ -397,12 +398,13 @@ do
   --image_root_calibration sa-1b \
   --annotation_json_file coco/annotations/instances_val2017.json \
   --model $model \
-  --limit_iterations 10 \
+  --limit_iterations 2500 \
   --prompt_type box \
   --backbone_version $backbone_item \
   --quantize_W \
   --quantize_N \
   --quantize_A \
+  --calibration_mode_W channel_wise \
   --export_dataframe \
   --script_name $model
   # --limit_iterations 10 \
@@ -433,12 +435,13 @@ do
   --image_root_calibration sa-1b \
   --annotation_json_file coco/annotations/instances_val2017.json \
   --model $model \
-  --limit_iterations 10 \
+  --limit_iterations 2500 \
   --prompt_type box \
   --backbone_version $backbone_item \
   --quantize_W \
   --quantize_N \
   --quantize_A \
+  --calibration_mode_W channel_wise \
   --export_dataframe \
   --script_name $model
   # --limit_iterations 10 \
