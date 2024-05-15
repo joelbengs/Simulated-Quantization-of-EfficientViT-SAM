@@ -1085,7 +1085,7 @@ class QMBConv(nn.Module):
         # layer-wise analysis showed these layers to be sensitive to quantization.
         # Toggle her to experiment with them protected
         # note that they will not show up in printouts, since printouts iterate over instances of QConvLayer
-        protect_sensitive_depthwise_conv_to_FP32 = True
+        protect_sensitive_depthwise_conv_to_FP32 = False
         if protect_sensitive_depthwise_conv_to_FP32:
                 self.depth_conv = ConvLayer(
                 mid_channels,
@@ -1112,7 +1112,7 @@ class QMBConv(nn.Module):
             )
 
         # this layer was also found to be sensitive
-        protect_sensitive_pointwise_conv_to_FP32 = True
+        protect_sensitive_pointwise_conv_to_FP32 = False
         if protect_sensitive_pointwise_conv_to_FP32:
             self.point_conv = ConvLayer(
                 mid_channels,
