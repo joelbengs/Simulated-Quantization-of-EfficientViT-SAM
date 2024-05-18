@@ -384,7 +384,7 @@ class EfficientViTSamImageEncoder(nn.Module):
             print(f"Spared parts: {', '.join(spared_parts)}" if spared_parts else "Did not spare any parts.")
     '''
 
-    def simple_toggle_selective_attribute(
+    def toggle_selective_attribute(
             self, 
             attribute: str,
             attribute_goal_state=True,
@@ -526,34 +526,34 @@ class EfficientViTSam(nn.Module):
 
     ### Simple versions: expects other backbone formats
     def toggle_selective_calibrate_on(self, **kwargs):
-        self.image_encoder.simple_toggle_selective_attribute(attribute="calibrate", **kwargs,)
+        self.image_encoder.toggle_selective_attribute(attribute="calibrate", **kwargs,)
         
     def toggle_selective_calibrate_off(self, **kwargs):
-        self.image_encoder.simple_toggle_selective_attribute(attribute="calibrate", attribute_goal_state=False, **kwargs,)
+        self.image_encoder.toggle_selective_attribute(attribute="calibrate", attribute_goal_state=False, **kwargs,)
 
     def toggle_selective_last_calibrate_on(self, **kwargs):
-        self.image_encoder.simple_toggle_selective_attribute(attribute="last_calibrate", **kwargs,)
+        self.image_encoder.toggle_selective_attribute(attribute="last_calibrate", **kwargs,)
     
     def toggle_selective_last_calibrate_off(self, **kwargs):
-        self.image_encoder.simple_toggle_selective_attribute(attribute="last_calibrate", attribute_goal_state=False, **kwargs,)
+        self.image_encoder.toggle_selective_attribute(attribute="last_calibrate", attribute_goal_state=False, **kwargs,)
 
     def toggle_selective_quant_weights_on(self, **kwargs):
-        self.image_encoder.simple_toggle_selective_attribute(attribute="quant_weights", **kwargs,)
+        self.image_encoder.toggle_selective_attribute(attribute="quant_weights", **kwargs,)
 
     def toggle_selective_quant_weights_off(self, **kwargs):
-        self.image_encoder.simple_toggle_selective_attribute(attribute="quant_weights", attribute_goal_state=False, **kwargs,)
+        self.image_encoder.toggle_selective_attribute(attribute="quant_weights", attribute_goal_state=False, **kwargs,)
 
     def toggle_selective_quant_activations_on(self, **kwargs):
-        self.image_encoder.simple_toggle_selective_attribute(attribute="quant_activations", **kwargs,)
+        self.image_encoder.toggle_selective_attribute(attribute="quant_activations", **kwargs,)
 
     def toggle_selective_quant_activations_off(self, **kwargs):
-        self.image_encoder.simple_toggle_selective_attribute(attribute="quant_activations", attribute_goal_state=False, **kwargs,)
+        self.image_encoder.toggle_selective_attribute(attribute="quant_activations", attribute_goal_state=False, **kwargs,)
 
     def toggle_selective_quant_norms_on(self, **kwargs):
-        self.image_encoder.simple_toggle_selective_attribute(attribute="quant_norms", **kwargs,)
+        self.image_encoder.toggle_selective_attribute(attribute="quant_norms", **kwargs,)
 
     def toggle_selective_quant_norms_off(self, **kwargs):
-        self.image_encoder.simple_toggle_selective_attribute(attribute="quant_norms", attribute_goal_state=False, **kwargs,)
+        self.image_encoder.toggle_selective_attribute(attribute="quant_norms", attribute_goal_state=False, **kwargs,)
 
     ### statistics
     def toggle_monitor_distributions_on(self, **kwargs):

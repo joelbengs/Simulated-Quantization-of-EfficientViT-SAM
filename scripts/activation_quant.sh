@@ -339,6 +339,42 @@ XL1:neck:15:0
 )
 
 
+
+# OUTLIERS - To be verified
+#
+#backbones_L0=(
+#L0:stage2:0:0
+#L0:stage3:2:2
+#L0:stage4:1:4
+#L0:stage4:3:5
+#)
+#
+#backbones_L2=(
+#L2:stage3:1:1
+#L2:stage4:1:4
+#L2:stage4:2:4
+#L2:stage4:7:4
+#L2:stage4:8:4
+#L2:neck:10:0
+#L2:neck:11:0
+#L2:neck:12:0
+#)
+#
+#
+#backbones_XL1=(
+#XL1:stage2:0:0
+#XL1:stage2:1:0
+#XL1:stage3:0:0
+#XL1:stage3:1:0
+#XL1:stage3:2:0
+#XL1:stage3:3:0
+#XL1:stage3:4:0
+#XL1:stage4:1:4
+#XL1:stage5:0:0
+#XL1:neck:13:0
+#)
+
+
 models=(
 "l0_quant"
 "l1_quant"

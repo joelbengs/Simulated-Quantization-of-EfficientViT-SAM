@@ -2,7 +2,34 @@
 #for key in REGISTERED_BACKBONE_VERSIONS.keys(): print(key)
 
 
-# Creates backbones for layerwise investigation of L0
+'''
+This code creates and exports architectures for quantization of the image encoder, along with descriptions of each layer
+
+The naming scheme is model : stage : block : layer.
+
+When doing quantization, a key on this form will identfy a configuration from the dictionary REGISTERED_BACKBONE_VERSIONS.
+This config is used by the function toggle_selective_attribute in the image encoder of sam.py
+It is used to identify the layer which to toggle on.
+
+Example:
+L1:stage4:3:2 is the key that defines
+Model L1
+Stage 4 within the model
+Block number 3 in the stage
+Layer number 2 in the block
+
+To get a description of this layer, call REGISTERED_BACKBONE_DESCRIPTIONS_LARGE[4:3:2]
+and it will in this case return the string 'Proj' since this layer is a projection convolution inside an attention module.
+
+Yes, there is an abnormality. When calling the dictionary, use form '4:3:2' without mention of model, but make sure to call the correct description dictionary (LARGE or XL).
+When fetching a backbone version, use full form 'L1:stage4:3:2'
+
+To view all keys in the terminal, uncomment the print statement inside create_backbone_versions.
+
+The unquantized baseline model, which will not affect any layer, is named model:none:none:none. The backbone that will quantize all layers is named model:all:all:all.
+
+You can define your own combinations. The code will toggle the attributes of those layers in the intersection of stage:block:layer, which are three lists that may contain several elements.
+'''
 
 
 def create_backbone_baselines():
@@ -18,8 +45,8 @@ def create_backbone_baselines():
     for m in models:
         backbone_dict[f'{m}:all:all:all'] =  {
                 'stages': ["unknown", "stage0", "stage1", "stage2", "stage3", "stage4", "stage5", "neck"],
-                'block_positions': [0,1,2,3,4,5,6,7,8,9], # surely includes all
-                'layer_positions': [0,1,2,3,4,5,6,7,8,9], # surely includes all
+                'block_positions': [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15], # includes all, as the deepest stage has 15 blocks counted from 0.
+                'layer_positions': [0,1,2,3,4,5,6,7,8,9], # includes all
             },
     return backbone_dict
 
@@ -108,148 +135,297 @@ def create_backbone_versions(baseline_dict: dict):
 
 REGISTERED_BACKBONE_VERSIONS = create_backbone_versions(create_backbone_baselines())
 
-REGISTERED_BACKBONE_DESCRIPTIONS = {
-    ### Just t''o provide types
-    '0:0:0': 'Input Conv',
-    '0:1:0': 'ResBlock conv 1',
-    '0:1:1': 'Resblock conv 2',
-    '1:0:0': 'FMBConv 3x3',
-    '1:0:1': 'FMBConv 1x1',
-    '1:1:0': 'FMBConv 3x3',
-    '1:1:1': 'FMBConv 1x1',
-    '2:0:0': 'FMBConv 3x3',
-    '2:0:1': 'FMBConv 1x1',
-    '2:1:0': 'FMBConv 3x3',
-    '2:1:1': 'FMBConv 1x1',
-    '3:0:0': 'MBConv 1x1 expand',
-    '3:0:1': 'MBConv DWconv',
-    '3:0:2': 'MBConv 1x1 compress',
-    '3:1:0': 'MBConv 1x1 expand',
-    '3:1:1': 'MBConv DWconv',
-    '3:1:2': 'MBConv 1x1 compress',
-    '3:2:0': 'MBConv 1x1 expand',
-    '3:2:1': 'MBConv DWconv',
-    '3:2:2': 'MBConv 1x1 compress',
-    '3:3:0': 'MBConv 1x1 expand',
-    '3:3:1': 'MBConv DWconv',
-    '3:3:2': 'MBConv 1x1 compress',
-    '3:4:0': 'MBConv 1x1 expand',
-    '3:4:1': 'MBConv DWconv',
-    '3:4:2': 'MBConv 1x1 compress',
-    '4:0:0': 'MBConv 1x1 expand',
-    '4:0:1': 'MBConv DWconv',
-    '4:0:2': 'MBConv 1x1 no a compress',
-    '4:1:0': 'QKV-Conv 1x1',
-    '4:1:1': 'Scaling Conv 5x5',
-    '4:1:2': 'Scaling Conv 1x1',
-    '4:1:3': 'Projection conv 1x1',
-    '4:1:4': 'MBConv 1x1 expand',
-    '4:1:5': 'MBConv DWconv',
-    '4:1:6': 'MBConv 1x1 compress',
-    '4:2:0': 'QKV-Conv 1x1',
-    '4:2:1': 'Scaling Conv 5x5',
-    '4:2:2': 'Scaling Conv 1x1',
-    '4:2:3': 'Projection conv 1x1',
-    '4:2:4': 'MBConv 1x1 expand',
-    '4:2:5': 'MBConv DWconv',
-    '4:2:6': 'MBConv 1x1 compress',
-    '4:3:0': 'QKV-Conv 1x1',
-    '4:3:1': 'Scaling Conv 5x5',
-    '4:3:2': 'Scaling Conv 1x1',
-    '4:3:3': 'Projection conv 1x1',
-    '4:3:4': 'MBConv 1x1 expand',
-    '4:3:5': 'MBConv DWconv',
-    '4:3:6': 'MBConv 1x1 compress',
-    '4:4:0': 'QKV-Conv 1x1',
-    '4:4:1': 'Scaling Conv 5x5',
-    '4:4:2': 'Scaling Conv 1x1',
-    '4:4:3': 'Projection conv 1x1',
-    '4:4:4': 'MBConv 1x1 expand',
-    '4:4:5': 'MBConv DWconv',
-    '4:4:6': 'MBConv 1x1 compress',
+REGISTERED_BACKBONE_DESCRIPTIONS_LARGE = {
+    # Stage 0 - common to all large models
+    '0:0:0': 'Conv',
+    '0:1:0': 'ResBlock',
+    '0:1:1': 'Resblock',
+    
+    # Stage 1 - common to all large models
+    '1:0:0': 'FMBC 3x3',
+    '1:0:1': 'FMBC 1x1',
+    '1:1:0': 'FMBC 3x3',
+    '1:1:1': 'FMBC 1x1',
+    
+    # Stage 2 - common to all large models
+    '2:0:0': 'FMBC 3x3',
+    '2:0:1': 'FMBC 1x1',
+    '2:1:0': 'FMBC 3x3',
+    '2:1:1': 'FMBC 1x1',
+    
+    # Stage 3
+    '3:0:0': 'MBC 1x1 exp',
+    '3:0:1': 'MBC DW',
+    '3:0:2': 'MBC 1x1 comp',
+    '3:1:0': 'MBC 1x1 exp',
+    '3:1:1': 'MBC DW',
+    '3:1:2': 'MBC 1x1 comp',
+    '3:2:0': 'MBC 1x1 exp',
+    '3:2:1': 'MBC DW',
+    '3:2:2': 'MBC 1x1 comp',
+    '3:3:0': 'MBC 1x1 exp',
+    '3:3:1': 'MBC DW',
+    '3:3:2': 'MBC 1x1 comp',
+    '3:4:0': 'MBC 1x1 exp',
+    '3:4:1': 'MBC DW',
+    '3:4:2': 'MBC 1x1 comp',
+    # L2
+    '3:5:0': 'MBC 1x1 exp',
+    '3:5:1': 'MBC DW',
+    '3:5:2': 'MBC 1x1 comp',
+    '3:6:0': 'MBC 1x1 exp',
+    '3:6:1': 'MBC DW',
+    '3:6:2': 'MBC 1x1 comp',
+    # L3
+    '3:7:0': 'MBC 1x1 exp',
+    '3:7:1': 'MBC DW',
+    '3:7:2': 'MBC 1x1 comp',
+    '3:8:0': 'MBC 1x1 exp',
+    '3:8:1': 'MBC DW',
+    '3:8:2': 'MBC 1x1 comp',
+
+    # Stage 4
+    '4:0:0': 'MBC 1x1 exp',
+    '4:0:1': 'MBC DW',
+    '4:0:2': 'MBC 1x1 comp',
+    '4:1:0': 'QKV',
+    '4:1:1': 'Attention',
+    '4:1:2': 'Proj',
+    '4:1:3': 'MBC 1x1 exp',
+    '4:1:4': 'MBC DW',
+    '4:1:5': 'MBC 1x1 comp',
+    '4:2:0': 'QKV',
+    '4:2:1': 'Attention',
+    '4:2:2': 'Proj',
+    '4:2:3': 'MBC 1x1 exp',
+    '4:2:4': 'MBC DW',
+    '4:2:5': 'MBC 1x1 comp',
+    '4:3:0': 'QKV',
+    '4:3:1': 'Attention',
+    '4:3:2': 'Proj',
+    '4:3:3': 'MBC 1x1 exp',
+    '4:3:4': 'MBC DW',
+    '4:3:5': 'MBC 1x1 comp',
+    '4:4:0': 'QKV',
+    '4:4:1': 'Attention',
+    '4:4:2': 'Proj',
+    '4:4:3': 'MBC 1x1 exp',
+    '4:4:4': 'MBC DW',
+    '4:4:5': 'MBC 1x1 comp',
+
+    # L2 - two extra attention modules
+    '4:5:0': 'QKV',
+    '4:5:1': 'Attention',
+    '4:5:2': 'Proj',
+    '4:5:3': 'MBC 1x1 exp',
+    '4:5:4': 'MBC DW',
+    '4:5:5': 'MBC 1x1 comp',
+    '4:6:0': 'QKV',
+    '4:6:1': 'Attention',
+    '4:6:2': 'Proj',
+    '4:6:3': 'MBC 1x1 exp',
+    '4:6:4': 'MBC DW',
+    '4:6:5': 'MBC 1x1 comp',    
+  
+    # L3 - two extra attention modules
+    '4:7:0': 'QKV',
+    '4:7:1': 'Attention',
+    '4:7:2': 'Proj',
+    '4:7:3': 'MBC 1x1 exp',
+    '4:7:4': 'MBC DW',
+    '4:7:5': 'MBC 1x1 comp',
+    '4:8:0': 'QKV',
+    '4:8:1': 'Attention',
+    '4:8:2': 'Proj',
+    '4:8:3': 'MBC 1x1 exp',
+    '4:8:4': 'MBC DW',
+    '4:8:5': 'MBC 1x1 comp',
+
+    # Stage 5
     'neck:0:0': 'Conv + upsample from 512',
     'neck:1:0': 'Conv + upsample from 256',
     'neck:2:0': 'Conv + upsample from 128',
-    'neck:3:0': 'FMBConv 3x3',
-    'neck:3:1': 'FMBConv 1x1',
-    'neck:4:0': 'FMBConv 3x3',
-    'neck:4:1': 'FMBConv 1x1',
-    'neck:5:0': 'FMBConv 3x3',
-    'neck:5:1': 'FMBConv 1x1',
-    'neck:6:0': 'FMBConv 3x3',
-    'neck:6:1': 'FMBConv 1x1',
-    'neck:7:0': 'Conv 1x1,',
-}
+    'neck:3:0': 'FMBC 3x3',
+    'neck:3:1': 'FMBC 1x1',
+    'neck:4:0': 'FMBC 3x3',
+    'neck:4:1': 'FMBC 1x1',
+    'neck:5:0': 'FMBC 3x3',
+    'neck:5:1': 'FMBC 1x1',
+    'neck:6:0': 'FMBC 3x3',
+    'neck:6:1': 'FMBC 1x1',
 
-REGISTERED_BACKBONE_DESCRIPTIONS_DETAILED = {
-    ### Just to provide types
-    '0:0:0': 'Input Conv (bottleneck)',
-    '0:1:0': 'ResBlock conv',
-    '0:1:1': 'Resblock conv no act',
-    '1:0:0': 'FMBConv 3x3 (bottleneck)',
-    '1:0:1': 'FMBConv 1x1 no act (bottleneck)',
-    '1:1:0': 'FMBConv 3x3',
-    '1:1:1': 'FMBConv 1x1 no act',
-    '2:0:0': 'FMBConv 3x3 (bottleneck)',
-    '2:0:1': 'FMBConv 1x1 no act (bottleneck)',
-    '2:1:0': 'FMBConv 3x3',
-    '2:1:1': 'FMBConv 1x1 no act',
-    '3:0:0': 'MBConv 1x1 no norm (bottleneck)',
-    '3:0:1': 'MBConv DWconv no norm (bottleneck)',
-    '3:0:2': 'MBConv 1x1 no act (bottleneck)',
-    '3:1:0': 'MBConv 1x1 no norm',
-    '3:1:1': 'MBConv DWconv no norm',
-    '3:1:2': 'MBConv 1x1 no act',
-    '3:2:0': 'MBConv 1x1 no norm',
-    '3:2:1': 'MBConv DWconv no norm',
-    '3:2:2': 'MBConv 1x1 no act',
-    '3:3:0': 'MBConv 1x1 no norm',
-    '3:3:1': 'MBConv DWconv no norm',
-    '3:3:2': 'MBConv 1x1 no act',
-    '3:4:0': 'MBConv 1x1 no norm',
-    '3:4:1': 'MBConv DWconv no norm',
-    '3:4:2': 'MBConv 1x1 no act',
-    '4:0:0': 'MBConv 1x1 no norm (bottleneck)',
-    '4:0:1': 'MBConv DWconv no norm (bottleneck)',
-    '4:0:2': 'MBConv 1x1 no act (bottleneck)',
-    '4:1:0': 'QKV-Conv 1x1',
-    '4:1:1': 'Scaling Conv 5x5, no norm, no act',
-    '4:1:2': 'Scaling Conv 1x1, no norm, no act',
-    '4:1:3': 'Projection conv 1x1',
-    '4:1:4': 'MBConv 1x1 no norm',
-    '4:1:5': 'MBConv DWconv no norm',
-    '4:1:6': 'MBConv 1x1 no act',
-    '4:2:0': 'QKV-Conv 1x1',
-    '4:2:1': 'Scaling Conv 5x5, no norm, no act',
-    '4:2:2': 'Scaling Conv 1x1, no norm, no act',
-    '4:2:3': 'Projection conv 1x1',
-    '4:2:4': 'MBConv 1x1 no norm',
-    '4:2:5': 'MBConv DWconv no norm',
-    '4:2:6': 'MBConv 1x1 no act',
-    '4:3:0': 'QKV-Conv 1x1',
-    '4:3:1': 'Scaling Conv 5x5, no norm, no act',
-    '4:3:2': 'Scaling Conv 1x1, no norm, no act',
-    '4:3:3': 'Projection conv 1x1',
-    '4:3:4': 'MBConv 1x1 no norm',
-    '4:3:5': 'MBConv DWconv no norm',
-    '4:3:6': 'MBConv 1x1 no act',
-    '4:4:0': 'QKV-Conv 1x1',
-    '4:4:1': 'Scaling Conv 5x5, no norm, no act',
-    '4:4:2': 'Scaling Conv 1x1, no norm, no act',
-    '4:4:3': 'Projection conv 1x1',
-    '4:4:4': 'MBConv 1x1 no norm',
-    '4:4:5': 'MBConv DWconv no norm',
-    '4:4:6': 'MBConv 1x1 no act',
-    'neck:0:0': 'Conv + upsample from 512, no act',
-    'neck:1:0': 'Conv + upsample from 256, no act',
-    'neck:2:0': 'Conv + upsample from 128, no act',
-    'neck:3:0': 'FMBConv 3x3',
-    'neck:3:1': 'FMBConv 1x1 no act',
-    'neck:4:0': 'FMBConv 3x3',
-    'neck:4:1': 'FMBConv 1x1 no act',
-    'neck:5:0': 'FMBConv 3x3',
-    'neck:5:1': 'FMBConv 1x1 no act',
-    'neck:6:0': 'FMBConv 3x3',
-    'neck:6:1': 'FMBConv 1x1 no act',
-    'neck:7:0': 'Conv 1x1, no act',
-}
+    # L2
+    'neck:7:0': 'FMBC 3x3 OR Conv 1x1 in L0',
+    'neck:7:1': 'FMBC 1x1',
+    'neck:8:0': 'FMBC 3x3',
+    'neck:8:1': 'FMBC 1x1',
+    'neck:9:0': 'FMBC 3x3',
+    'neck:9:1': 'FMBC 1x1',
+    'neck:10:0': 'FMBC 3x3',
+    'neck:10:1': 'FMBC 1x1',
+
+    # L3 
+    'neck:11:0': 'FMBC 3x3  OR Conv 1x1 in L1',
+    'neck:11:1': 'FMBC 1x1',
+    'neck:12:0': 'FMBC 3x3',
+    'neck:12:1': 'FMBC 1x1',
+    'neck:13:0': 'FMBC 3x3',
+    'neck:13:1': 'FMBC 1x1',
+    'neck:14:0': 'FMBC 3x3',
+    'neck:14:1': 'FMBC 1x1',
+    # common last layer
+    'neck:15:0': 'Conv 1x1,',
+    }
+
+REGISTERED_BACKBONE_DESCRIPTIONS_XL = {
+    # Stage 0
+    '0:0:0': 'Conv',
+    # XL1
+    '0:1:0': 'ResBlock',
+    '0:1:1': 'Resblock',
+    
+    # Stage 1
+    '1:0:0': 'FMBC 3x3',
+    '1:0:1': 'FMBC 1x1',
+    '1:1:0': 'FMBC 3x3',
+    '1:1:1': 'FMBC 1x1',
+    # XL1 - three extra FMBC
+    '1:2:0': 'FMBC 3x3',
+    '1:2:1': 'FMBC 1x1',
+    '1:3:0': 'FMBC 3x3',
+    '1:3:1': 'FMBC 1x1',
+    '1:4:0': 'FMBC 3x3',
+    '1:4:1': 'FMBC 1x1',
+    
+    # Stage 2
+    '2:0:0': 'FMBC 3x3',
+    '2:0:1': 'FMBC 1x1',
+    '2:1:0': 'FMBC 3x3',
+    '2:1:1': 'FMBC 1x1',
+    # XL1 - three extra FMBC
+    '2:2:0': 'FMBC 3x3',
+    '2:2:1': 'FMBC 1x1',
+    '2:3:0': 'FMBC 3x3',
+    '2:3:1': 'FMBC 1x1',
+    '2:4:0': 'FMBC 3x3',
+    '2:4:1': 'FMBC 1x1',
+    
+    # Stage 3
+    '3:0:0': 'FMBC 3x3',
+    '3:0:1': 'FMBC 1x1',
+    '3:1:0': 'FMBC 3x3',
+    '3:1:1': 'FMBC 1x1',
+    '3:2:0': 'FMBC 3x3',
+    '3:2:1': 'FMBC 1x1',
+    # XL1 - two extra FMBC
+    '3:3:0': 'FMBC 3x3',
+    '3:3:1': 'FMBC 1x1',
+    '3:4:0': 'FMBC 3x3',
+    '3:4:1': 'FMBC 1x1',
+
+    # Stage 4
+    '4:0:0': 'MBC 1x1 exp',
+    '4:0:1': 'MBC DW',
+    '4:0:2': 'MBC 1x1 comp',
+    '4:1:0': 'QKV',
+    '4:1:1': 'Attention',
+    '4:1:2': 'Proj',
+    '4:1:3': 'MBC 1x1 exp',
+    '4:1:4': 'MBC DW',
+    '4:1:5': 'MBC 1x1 comp',
+    '4:2:0': 'QKV',
+    '4:2:1': 'Attention',
+    '4:2:2': 'Proj',
+    '4:2:3': 'MBC 1x1 exp',
+    '4:2:4': 'MBC DW',
+    '4:2:5': 'MBC 1x1 comp',
+    '4:3:0': 'QKV',
+    '4:3:1': 'Attention',
+    '4:3:2': 'Proj',
+    '4:3:3': 'MBC 1x1 exp',
+    '4:3:4': 'MBC DW',
+    '4:3:5': 'MBC 1x1 comp',
+    # XL1 - one extra attention module
+    '4:4:0': 'QKV',
+    '4:4:1': 'Attention',
+    '4:4:2': 'Proj',
+    '4:4:3': 'MBC 1x1 exp',
+    '4:4:4': 'MBC DW',
+    '4:4:5': 'MBC 1x1 comp',
+
+    # Stage 5
+    '5:0:0': 'MBC 1x1 exp',
+    '5:0:1': 'MBC DW',
+    '5:0:2': 'MBC 1x1 comp',
+    '5:1:0': 'QKV',
+    '5:1:1': 'Attention',
+    '5:1:2': 'Proj',
+    '5:1:3': 'MBC 1x1 exp',
+    '5:1:4': 'MBC DW',
+    '5:1:5': 'MBC 1x1 comp',
+    '5:2:0': 'QKV',
+    '5:2:1': 'Attention',
+    '5:2:2': 'Proj',
+    '5:2:3': 'MBC 1x1 exp',
+    '5:2:4': 'MBC DW',
+    '5:2:5': 'MBC 1x1 comp',
+    '5:3:0': 'QKV',
+    '5:3:1': 'Attention',
+    '5:3:2': 'Proj',
+    '5:3:3': 'MBC 1x1 exp',
+    '5:3:4': 'MBC DW',
+    '5:3:5': 'MBC 1x1 comp',
+    # XL1 - three extra attention module
+    '5:4:0': 'QKV',
+    '5:4:1': 'Attention',
+    '5:4:2': 'Proj',
+    '5:4:3': 'MBC 1x1 exp',
+    '5:4:4': 'MBC DW',
+    '5:4:5': 'MBC 1x1 comp',
+    '5:5:0': 'QKV',
+    '5:5:1': 'Attention',
+    '5:5:2': 'Proj',
+    '5:5:3': 'MBC 1x1 exp',
+    '5:5:4': 'MBC DW',
+    '5:5:5': 'MBC 1x1 comp',
+    '5:6:0': 'QKV',
+    '5:6:1': 'Attention',
+    '5:6:2': 'Proj',
+    '5:6:3': 'MBC 1x1 exp',
+    '5:6:4': 'MBC DW',
+    '5:6:5': 'MBC 1x1 comp',
+
+    # neck
+    'neck:0:0': 'Conv + upsample from 512',
+    'neck:1:0': 'Conv + upsample from 256',
+    'neck:2:0': 'Conv + upsample from 128',
+    'neck:3:0': 'FMBC 3x3',
+    'neck:3:1': 'FMBC 1x1',
+    'neck:4:0': 'FMBC 3x3',
+    'neck:4:1': 'FMBC 1x1',
+    'neck:5:0': 'FMBC 3x3',
+    'neck:5:1': 'FMBC 1x1',
+    'neck:6:0': 'FMBC 3x3',
+    'neck:6:1': 'FMBC 1x1',
+
+    # XL1 has six extra FMBC
+    'neck:7:0': 'FMBC 3x3 OR Conv 1x1 in XL0',
+    'neck:7:1': 'FMBC 1x1',
+    'neck:8:0': 'FMBC 3x3',
+    'neck:8:1': 'FMBC 1x1',
+    'neck:9:0': 'FMBC 3x3',
+    'neck:9:1': 'FMBC 1x1',
+    'neck:10:0': 'FMBC 3x3',
+    'neck:10:1': 'FMBC 1x1',
+    'neck:11:0': 'FMBC 3x3',
+    'neck:11:1': 'FMBC 1x1',
+    'neck:12:0': 'FMBC 3x3',
+    'neck:12:1': 'FMBC 1x1',
+    'neck:13:0': 'FMBC 3x3',
+    'neck:13:1': 'FMBC 1x1',
+    'neck:14:0': 'FMBC 3x3',
+    'neck:14:1': 'FMBC 1x1',
+    # common last layer, which is the only layer for which the naming scheme breaks.
+    # XLO has neck:7:0 as last layer, XL1 has neck:15:0
+    'neck:15:0': 'Conv 1x1,',
+    }
