@@ -410,7 +410,8 @@ class EfficientViTSamImageEncoder(nn.Module):
                                 count_affected = count_affected + 1
                                 if printout: print(f"{attribute} == {attribute_goal_state} for {m.block_name}-layer with id {m.stage_id}:{m.block_position}:{m.layer_position}", f"                module {count_all} of type {type(m)}:")
                             else:
-                                print(f"Warning: {attribute} does not exist in module: {m}")
+                                if type(m) in [QConvLayer, QConvLayerV2]: # its okay for QLiteMLA to not have all attributes
+                                    print(f"Warning: {attribute} does not exist in module: {m}")
                         else:
                             if printout: print(f"Attribute {attribute} on module {m.stage_id}:{m.block_position}:{m.layer_position} was not affected due to layer condition", f"                module {count_all} of type {type(m)}:")
                     else:

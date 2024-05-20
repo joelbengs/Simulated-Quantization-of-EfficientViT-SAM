@@ -41,13 +41,13 @@ def create_backbone_baselines():
             'stages': [],
             'block_positions': [],
             'layer_positions': [],
-            },
+            }
     for m in models:
         backbone_dict[f'{m}:all:all:all'] =  {
                 'stages': ["unknown", "stage0", "stage1", "stage2", "stage3", "stage4", "stage5", "neck"],
                 'block_positions': [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15], # includes all, as the deepest stage has 15 blocks counted from 0.
                 'layer_positions': [0,1,2,3,4,5,6,7,8,9], # includes all
-            },
+            }
     return backbone_dict
 
 

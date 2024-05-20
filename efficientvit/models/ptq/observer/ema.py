@@ -10,9 +10,10 @@ class EmaObserver(BaseObserver):
                  module_type,
                  bit_type,
                  calibration_mode,
-                 ema_sigma=0.01):
+                 ema_sigma=0.01,
+                 **kwargs):
         super(EmaObserver, self).__init__(module_type, bit_type,
-                                          calibration_mode)
+                                          calibration_mode, **kwargs)
         self.ema_sigma = ema_sigma
         self.symmetric = self.bit_type.signed
 

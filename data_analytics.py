@@ -34,8 +34,12 @@ def plot(df, title: str, xlabel: str, name: str, model: str = 'L0', prompt_type:
         description_dict = REGISTERED_BACKBONE_DESCRIPTIONS_LARGE
 
     baseline_value=baselines_box[model]
-    zoom_lower_limit=77
-    zoom_upper_limit= 80 # baseline_value + 0.2
+    zoom_lower_limit=76
+    zoom_upper_limit = baseline_value + 0.2
+    #if zoom:
+    #    zoom_upper_limit = 80
+    #else:
+    #    zoom_upper_limit = baseline_value + 0.2
     texts = []
     
     if prompt_type == 'box' or prompt_type == 'point':
@@ -59,7 +63,7 @@ def plot(df, title: str, xlabel: str, name: str, model: str = 'L0', prompt_type:
         # Add description to each data point where 'all' score is substantially lower than baseline
         for i, val in df.iterrows(): # index and row data
             if zoom:
-                if val[performance_measure] < baseline_value-0.1:
+                if val[performance_measure] < baseline_value-0.3:
                     # using adjustText library to avoid overlapping text
                     texts.append(ax.text(val['backbone_version'], val['adjusted_performance_measure'], f"{description_dict[val['backbone_version']]}"))
             else:
@@ -73,7 +77,7 @@ def plot(df, title: str, xlabel: str, name: str, model: str = 'L0', prompt_type:
     for x in df['backbone_version']:
         ax.axvline(x, color='lightgray', linestyle='dotted')
     ax.axhline(baseline_value, color='red', linestyle='dotted')
-    ax.text(0, baseline_value - 0.1 if zoom else baseline_value - 1, 'Baseline', va='top', ha="right")
+    #ax.text(0, baseline_value - 0.1 if zoom else baseline_value - 1, 'Baseline', va='top', ha="right")
 
     ax.set_xlabel(xlabel)
     ax.set_ylabel('mIoU (higher is better)')
@@ -83,6 +87,9 @@ def plot(df, title: str, xlabel: str, name: str, model: str = 'L0', prompt_type:
         ax.set_ylim([zoom_lower_limit,zoom_upper_limit])
         save_name = f'./plots/graphs/{name}_zoom.png'
     else:
+        ax = plt.gca()  # get current axes
+        ymin, _ = ax.get_ylim()  # get the current lower limit
+        ax.set_ylim(ymin, zoom_upper_limit)  # set the new upper limit
         save_name = f'./plots/graphs/{name}.png'
 
     plt.suptitle(title)

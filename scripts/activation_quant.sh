@@ -341,7 +341,7 @@ XL1:neck:15:0
 
 
 # OUTLIERS - To be verified
-#
+
 #backbones_L0=(
 #L0:stage2:0:0
 #L0:stage3:2:2
@@ -373,7 +373,7 @@ XL1:neck:15:0
 #XL1:stage5:0:0
 #XL1:neck:13:0
 #)
-
+#
 
 models=(
 "l0_quant"
@@ -383,10 +383,13 @@ models=(
 "xl1_quant"
 )
 
+#WAAAAARNING THE FLAGS ARE SET TO TRUE no they not
+
 echo "--------- STARTING SCRIPT L0 ---------}"
 model=l0_quant
 for backbone_item in "${backbones_L0[@]}"
 do
+  echo " "
   echo "Model $model, backbone_version: $backbone_item" §
   # Run the evaluation command for the current model - with --quantize and configurations
   torchrun --nproc_per_node=2 \
@@ -401,8 +404,6 @@ do
   --prompt_type box \
   --backbone_version $backbone_item \
   --quantize_W \
-  --quantize_N \
-  --quantize_A \
   --calibration_mode_W channel_wise \
   --export_dataframe \
   --script_name $model
@@ -424,6 +425,7 @@ echo "--------- STARTING SCRIPT L2 ---------}"
 model=l2_quant
 for backbone_item in "${backbones_L2[@]}"
 do
+  echo " "
   echo "Model $model, backbone_version: $backbone_item" §
   # Run the evaluation command for the current model - with --quantize and configurations
   torchrun --nproc_per_node=2 \
@@ -438,8 +440,6 @@ do
   --prompt_type box \
   --backbone_version $backbone_item \
   --quantize_W \
-  --quantize_N \
-  --quantize_A \
   --calibration_mode_W channel_wise \
   --export_dataframe \
   --script_name $model
@@ -461,6 +461,7 @@ echo "--------- STARTING SCRIPT XL1 ---------}"
 model=xl1_quant
 for backbone_item in "${backbones_XL1[@]}"
 do
+  echo " "
   echo "Model $model, backbone_version: $backbone_item" §
   # Run the evaluation command for the current model - with --quantize and configurations
   torchrun --nproc_per_node=2 \
@@ -475,8 +476,6 @@ do
   --prompt_type box \
   --backbone_version $backbone_item \
   --quantize_W \
-  --quantize_N \
-  --quantize_A \
   --calibration_mode_W channel_wise \
   --export_dataframe \
   --script_name $model

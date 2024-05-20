@@ -7,9 +7,9 @@ from .utils import lp_loss
 
 class OmseObserver(BaseObserver):
 
-    def __init__(self, module_type, bit_type, calibration_mode):
+    def __init__(self, module_type, bit_type, calibration_mode, **kwargs):
         super(OmseObserver, self).__init__(module_type, bit_type,
-                                           calibration_mode)
+                                           calibration_mode, **kwargs)
 
     def update(self, v):
         v = self.reshape_tensor(v)
