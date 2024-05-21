@@ -659,6 +659,9 @@ if __name__ == "__main__":
         if local_rank == 0:
             __builtins__.print(*args, **kwargs)
 
+    if args.quantize_N:
+        print("Warning: Quant of norms is turned on, which is an experimental feature")
+
     # model creation
     efficientvit_sam = create_sam_model(name=args.model, pretrained=True, weight_url=args.weight_url, config=quant_config)
 

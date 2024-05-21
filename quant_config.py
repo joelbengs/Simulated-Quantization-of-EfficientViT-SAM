@@ -11,9 +11,9 @@ class Config:
         self.BIT_TYPE_A = BIT_TYPE_DICT['uint8']
 
         # choices=["minmax", "ema", "omse", "percentile"]
-        self.OBSERVER_W = args.observer_method_W if args.observer_method_W is not None else 'minmax'
-        self.OBSERVER_N = args.observer_method_N if args.observer_method_N is not None else 'minmax'
-        self.OBSERVER_A = args.observer_method_A if args.observer_method_A is not None else 'minmax'
+        self.OBSERVER_W = args.observer_method_W if args.observer_method_W is not None else 'ema'
+        self.OBSERVER_N = args.observer_method_N if args.observer_method_N is not None else 'ema'
+        self.OBSERVER_A = args.observer_method_A if args.observer_method_A is not None else 'ema'
 
         # choices=["uniform", "log2"]
         #self.QUANTIZER_W = args.quantize_method_W if hasattr(args, 'quantize_method_W') else 'uniform'

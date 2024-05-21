@@ -30,7 +30,17 @@ The unquantized baseline model, which will not affect any layer, is named model:
 
 You can define your own combinations. The code will toggle the attributes of those layers in the intersection of stage:block:layer, which are three lists that may contain several elements.
 '''
-
+# Here you can define any custom backbones you want
+def create_custom_backbones(baseline_dict: dict):
+    backbone_dict = baseline_dict
+    models = ['L0','L1','L2','XL0','XL1']
+    for m in models:
+            backbone_dict[f'{m}:all_but_neck:all:all'] =  {
+            'stages': ["unknown", "stage0", "stage1", "stage2", "stage3", "stage4", "stage5"],
+            'block_positions': [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
+            'layer_positions': [0,1,2,3,4,5,6,7,8,9],
+            }
+    return backbone_dict
 
 def create_backbone_baselines():
     # Initialize a backbone with two baselines: quantize nothing (none:none:none) or everything (all:all:all)
@@ -133,7 +143,7 @@ def create_backbone_versions(baseline_dict: dict):
 
     return backbone_dict
 
-REGISTERED_BACKBONE_VERSIONS = create_backbone_versions(create_backbone_baselines())
+REGISTERED_BACKBONE_VERSIONS = create_backbone_versions(create_custom_backbones(create_backbone_baselines()))
 
 REGISTERED_BACKBONE_DESCRIPTIONS_LARGE = {
     # Stage 0 - common to all large models

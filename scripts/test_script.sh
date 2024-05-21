@@ -18,7 +18,6 @@ export OMP_NUM_THREADS=$((nb_cpu_threads / nproc_per_node))
 # Define the model family and prompt type 
 # WARNING!! Models without _quant in the name will not use the correct backbone!!
 
-
  # choices=["minmax", "ema", "omse", "percentile"]
 
 
@@ -31,10 +30,14 @@ model=(
 )
 
 observer_methods=(
+minmax
 ema
 omse
 percentile
 )
+
+
+#WAAAAARNING THE FLAGS ARE SET TO TRUE 
 
 echo "--------- STARTING SCRIPT L0 ---------}"
 for obsmethod in "${observer_methods[@]}"
@@ -56,10 +59,8 @@ do
     --prompt_type box \
     --backbone_version $backbone_item \
     --quantize_W \
-    --quantize_N \
     --quantize_A \
     --observer_method_W $obsmethod \
-    --observer_method_N $obsmethod \
     --observer_method_A $obsmethod \
     --calibration_mode_W channel_wise \
     --script_name $model
@@ -68,9 +69,9 @@ do
     # --print_progress \
     # --plot_distributions \
     # --quantize_method_W $qmw \
+    # --quantize_N \ # NOT NORMALLY USED
     # --quantize_A \
     # --print_torchinfo \
-    # --quantize_N \
     # --quantize_method_A $qma \
     # --quantize_method_N $qmn \
     # --observer-method_A $oma \
@@ -79,7 +80,7 @@ do
 done
 
 backbones=(
-L2:all:all:all
+L2:all_but_neck:all:all
 )
 
 model=(
@@ -104,7 +105,6 @@ do
   --prompt_type box \
   --backbone_version $backbone_item \
   --quantize_W \
-  --quantize_N \
   --quantize_A \
   --calibration_mode_W channel_wise \
   --script_name $model
@@ -123,7 +123,7 @@ do
 done
 
 backbones=(
-xl1:all:all:all
+XL1:all_but_neck:all:all
 )
 
 model=(
@@ -148,7 +148,6 @@ do
   --prompt_type box \
   --backbone_version $backbone_item \
   --quantize_W \
-  --quantize_N \
   --quantize_A \
   --calibration_mode_W channel_wise \
   --script_name $model

@@ -87,6 +87,101 @@ L0:neck:6:1
 L0:neck:7:0
 )
 
+
+backbones_L1=(
+L1:stage0:0:0
+L1:stage0:1:0
+L1:stage0:1:1
+L1:stage1:0:0
+L1:stage1:0:1
+L1:stage1:1:0
+L1:stage1:1:1
+L1:stage2:0:0
+L1:stage2:0:1
+L1:stage2:1:0
+L1:stage2:1:1
+L1:stage3:0:0
+L1:stage3:0:1
+L1:stage3:0:2
+L1:stage3:1:0
+L1:stage3:1:1
+L1:stage3:1:2
+L1:stage3:2:0
+L1:stage3:2:1
+L1:stage3:2:2
+L1:stage3:3:0
+L1:stage3:3:1
+L1:stage3:3:2
+L1:stage3:4:0
+L1:stage3:4:1
+L1:stage3:4:2
+L1:stage3:5:0
+L1:stage3:5:1
+L1:stage3:5:2
+L1:stage3:6:0
+L1:stage3:6:1
+L1:stage3:6:2
+L1:stage4:0:0
+L1:stage4:0:1
+L1:stage4:0:2
+L1:stage4:1:0
+L1:stage4:1:1
+L1:stage4:1:2
+L1:stage4:1:3
+L1:stage4:1:4
+L1:stage4:1:5
+L1:stage4:2:0
+L1:stage4:2:1
+L1:stage4:2:2
+L1:stage4:2:3
+L1:stage4:2:4
+L1:stage4:2:5
+L1:stage4:3:0
+L1:stage4:3:1
+L1:stage4:3:2
+L1:stage4:3:3
+L1:stage4:3:4
+L1:stage4:3:5
+L1:stage4:4:0
+L1:stage4:4:1
+L1:stage4:4:2
+L1:stage4:4:3
+L1:stage4:4:4
+L1:stage4:4:5
+L1:stage4:5:0
+L1:stage4:5:1
+L1:stage4:5:2
+L1:stage4:5:3
+L1:stage4:5:4
+L1:stage4:5:5
+L1:stage4:6:0
+L1:stage4:6:1
+L1:stage4:6:2
+L1:stage4:6:3
+L1:stage4:6:4
+L1:stage4:6:5
+L1:neck:0:0
+L1:neck:1:0
+L1:neck:2:0
+L1:neck:3:0
+L1:neck:3:1
+L1:neck:4:0
+L1:neck:4:1
+L1:neck:5:0
+L1:neck:5:1
+L1:neck:6:0
+L1:neck:6:1
+L1:neck:7:0
+L1:neck:7:1
+L1:neck:8:0
+L1:neck:8:1
+L1:neck:9:0
+L1:neck:9:1
+L1:neck:10:0
+L1:neck:10:1
+L1:neck:11:0
+)
+
 backbones_L2=(
 L2:stage0:0:0
 L2:stage0:1:0
@@ -383,79 +478,102 @@ models=(
 "xl1_quant"
 )
 #
-##WAAAAARNING THE FLAGS ARE SET TO TRUE no they not
-#
-#echo "--------- STARTING SCRIPT L0 ---------}"
-#model=l0_quant
-#for backbone_item in "${backbones_L0[@]}"
-#do
-#  echo " "
-#  echo "Model $model, backbone_version: $backbone_item" §
-#  # Run the evaluation command for the current model - with --quantize and configurations
-#  torchrun --nproc_per_node=2 \
-#  eval_sam_model_joel.py \
-#  --dataset coco \
-#  --image_root coco/val2017 \
-#  --dataset_calibration sa-1b \
-#  --image_root_calibration sa-1b \
-#  --annotation_json_file coco/annotations/instances_val2017.json \
-#  --model $model \
-#  --limit_iterations 2500 \
-#  --prompt_type box \
-#  --backbone_version $backbone_item \
-#  --quantize_W \
-#  --calibration_mode_W channel_wise \
-#  --export_dataframe \
-#  --script_name $model
-#  # --limit_iterations 10 \
-#  # --export_dataframe \
-#  # --print_progress \
-#  # --plot_distributions \
-#  # --quantize_method_W $qmw \
-#  # --quantize_A \
-#  # --print_torchinfo \
-#  # --quantize_N \
-#  # --quantize_method_A $qma \
-#  # --quantize_method_N $qmn \
-#  # --observer-method_A $oma \
-#  # --observer-method_N $omn \
-#done
-#
-#echo "--------- STARTING SCRIPT L2 ---------}"
-#model=l2_quant
-#for backbone_item in "${backbones_L2[@]}"
-#do
-#  echo " "
-#  echo "Model $model, backbone_version: $backbone_item" §
-#  # Run the evaluation command for the current model - with --quantize and configurations
-#  torchrun --nproc_per_node=2 \
-#  eval_sam_model_joel.py \
-#  --dataset coco \
-#  --image_root coco/val2017 \
-#  --dataset_calibration sa-1b \
-#  --image_root_calibration sa-1b \
-#  --annotation_json_file coco/annotations/instances_val2017.json \
-#  --model $model \
-#  --limit_iterations 2500 \
-#  --prompt_type box \
-#  --backbone_version $backbone_item \
-#  --quantize_W \
-#  --calibration_mode_W channel_wise \
-#  --export_dataframe \
-#  --script_name $model
-#  # --limit_iterations 10 \
-#  # --export_dataframe \
-#  # --print_progress \
-#  # --plot_distributions \
-#  # --quantize_method_W $qmw \
-#  # --quantize_A \
-#  # --print_torchinfo \
-#  # --quantize_N \
-#  # --quantize_method_A $qma \
-#  # --quantize_method_N $qmn \
-#  # --observer-method_A $oma \
-#  # --observer-method_N $omn \
-#done
+
+WAAAAARNING THE FLAGS ARE SET TO TRUE 
+
+echo "--------- STARTING SCRIPT L1 ---------}"
+model=l1_quant
+for backbone_item in "${backbones_L1[@]}"
+do
+  echo " "
+  echo "Model $model, backbone_version: $backbone_item" §
+  # Run the evaluation command for the current model - with --quantize and configurations
+  torchrun --nproc_per_node=2 \
+  eval_sam_model_joel.py \
+  --dataset coco \
+  --image_root coco/val2017 \
+  --dataset_calibration sa-1b \
+  --image_root_calibration sa-1b \
+  --annotation_json_file coco/annotations/instances_val2017.json \
+  --model $model \
+  --limit_iterations 2500 \
+  --prompt_type box \
+  --backbone_version $backbone_item \
+  --quantize_W \
+  --quantize_A \
+  --export_dataframe \
+  --script_name $model
+  # --limit_iterations 10 \
+  # --export_dataframe \
+  # --print_progress \
+  # --plot_distributions \
+  # --quantize_method_W $qmw \
+  # --quantize_A \
+  # --print_torchinfo \
+done
+
+
+echo "--------- STARTING SCRIPT L0 ---------}"
+model=l0_quant
+for backbone_item in "${backbones_L0[@]}"
+do
+  echo " "
+  echo "Model $model, backbone_version: $backbone_item" §
+  # Run the evaluation command for the current model - with --quantize and configurations
+  torchrun --nproc_per_node=2 \
+  eval_sam_model_joel.py \
+  --dataset coco \
+  --image_root coco/val2017 \
+  --dataset_calibration sa-1b \
+  --image_root_calibration sa-1b \
+  --annotation_json_file coco/annotations/instances_val2017.json \
+  --model $model \
+  --limit_iterations 2500 \
+  --prompt_type box \
+  --backbone_version $backbone_item \
+  --quantize_W \
+  --quantize_A \
+  --export_dataframe \
+  --script_name $model
+  # --limit_iterations 10 \
+  # --export_dataframe \
+  # --print_progress \
+  # --plot_distributions \
+  # --quantize_method_W $qmw \
+  # --quantize_A \
+  # --print_torchinfo \
+done
+
+echo "--------- STARTING SCRIPT L2 ---------}"
+model=l2_quant
+for backbone_item in "${backbones_L2[@]}"
+do
+  echo " "
+  echo "Model $model, backbone_version: $backbone_item" §
+  # Run the evaluation command for the current model - with --quantize and configurations
+  torchrun --nproc_per_node=2 \
+  eval_sam_model_joel.py \
+  --dataset coco \
+  --image_root coco/val2017 \
+  --dataset_calibration sa-1b \
+  --image_root_calibration sa-1b \
+  --annotation_json_file coco/annotations/instances_val2017.json \
+  --model $model \
+  --limit_iterations 2500 \
+  --prompt_type box \
+  --backbone_version $backbone_item \
+  --quantize_W \
+  --quantize_A \
+  --export_dataframe \
+  --script_name $model
+  # --limit_iterations 10 \
+  # --export_dataframe \
+  # --print_progress \
+  # --plot_distributions \
+  # --quantize_method_W $qmw \
+  # --quantize_A \
+  # --print_torchinfo \
+done
 
 echo "--------- STARTING SCRIPT XL1 ---------}"
 model=xl1_quant
@@ -472,11 +590,11 @@ do
   --image_root_calibration sa-1b \
   --annotation_json_file coco/annotations/instances_val2017.json \
   --model $model \
-  --limit_iterations 10 \
+  --limit_iterations 2500 \
   --prompt_type box \
   --backbone_version $backbone_item \
   --quantize_W \
-  --calibration_mode_W channel_wise \
+  --quantize_A \
   --export_dataframe \
   --script_name $model
   # --limit_iterations 10 \
@@ -486,11 +604,6 @@ do
   # --quantize_method_W $qmw \
   # --quantize_A \
   # --print_torchinfo \
-  # --quantize_N \
-  # --quantize_method_A $qma \
-  # --quantize_method_N $qmn \
-  # --observer-method_A $oma \
-  # --observer-method_N $omn \
 done
 
 echo "--------- EVERYTHING COMPLETED ---------}"
