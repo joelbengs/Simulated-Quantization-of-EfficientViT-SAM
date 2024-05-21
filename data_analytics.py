@@ -34,7 +34,7 @@ def plot(df, title: str, xlabel: str, name: str, model: str = 'L0', prompt_type:
         description_dict = REGISTERED_BACKBONE_DESCRIPTIONS_LARGE
 
     baseline_value=baselines_box[model]
-    zoom_lower_limit=76
+    zoom_lower_limit=77.1
     zoom_upper_limit = baseline_value + 0.2
     #if zoom:
     #    zoom_upper_limit = 80
@@ -63,13 +63,13 @@ def plot(df, title: str, xlabel: str, name: str, model: str = 'L0', prompt_type:
         # Add description to each data point where 'all' score is substantially lower than baseline
         for i, val in df.iterrows(): # index and row data
             if zoom:
-                if val[performance_measure] < baseline_value-0.3:
+                if val[performance_measure] < baseline_value-0.1:
                     # using adjustText library to avoid overlapping text
-                    texts.append(ax.text(val['backbone_version'], val['adjusted_performance_measure'], f"{description_dict[val['backbone_version']]}"))
+                    texts.append(ax.text(val['backbone_version'], val['adjusted_performance_measure'] - 0.1, f"{description_dict[val['backbone_version']]}"))
             else:
-                if val[performance_measure] < baseline_value-1:
+                if val[performance_measure] < baseline_value-0.1:
                     #ax.text(val['backbone_version'], val[performance_measure], f"{description_dict[val['backbone_version']]}")
-                    texts.append(ax.text(val['backbone_version'], val[performance_measure], f"{description_dict[val['backbone_version']]}"))
+                    texts.append(ax.text(val['backbone_version'], val[performance_measure] - 0.1, f"{description_dict[val['backbone_version']]}"))
         adjust_text(texts)  # adjust text to minimize overlaps
 
         
