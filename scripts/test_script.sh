@@ -30,10 +30,7 @@ model=(
 )
 
 observer_methods=(
-minmax
 ema
-omse
-percentile
 )
 
 
@@ -55,7 +52,7 @@ do
     --image_root_calibration sa-1b \
     --annotation_json_file coco/annotations/instances_val2017.json \
     --model $model \
-    --limit_iterations 2500 \
+    --limit_iterations 4500 \
     --prompt_type box \
     --backbone_version $backbone_item \
     --quantize_W \
@@ -71,11 +68,9 @@ do
     # --quantize_method_W $qmw \
     # --quantize_N \ # NOT NORMALLY USED
     # --quantize_A \
+    # --observer_method_W $obsmethod \
+    # --observer_method_A $obsmethod \
     # --print_torchinfo \
-    # --quantize_method_A $qma \
-    # --quantize_method_N $qmn \
-    # --observer-method_A $oma \
-    # --observer-method_N $omn \
   done
 done
 
@@ -101,7 +96,7 @@ do
   --image_root_calibration sa-1b \
   --annotation_json_file coco/annotations/instances_val2017.json \
   --model $model \
-  --limit_iterations 2500 \
+  --limit_iterations 4500 \
   --prompt_type box \
   --backbone_version $backbone_item \
   --quantize_W \

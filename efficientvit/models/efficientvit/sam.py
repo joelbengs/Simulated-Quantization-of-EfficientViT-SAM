@@ -470,59 +470,7 @@ class EfficientViTSam(nn.Module):
         return masks
     
     ######################################################################
-    #       Toggles functions for quantization - early versions          #
-    ######################################################################
-    '''
-    def toggle_calibrate_on(self):
-        for m in self.image_encoder.modules():
-            if type(m) in [QConvLayer, QConvLayerV2]:
-                m.calibrate = True
-
-    def toggle_calibrate_off(self):
-        for m in self.image_encoder.modules():
-            if type(m) in [QConvLayer, QConvLayerV2]:
-                m.calibrate = False
-
-    def toggle_last_calibrate_on(self):
-        for m in self.image_encoder.modules():
-            if type(m) in [QConvLayer, QConvLayerV2]:
-                m.last_calibrate = True
-
-    def toggle_last_calibrate_off(self):
-      for m in self.image_encoder.modules():
-            if type(m) in [QConvLayer, QConvLayerV2]:
-                m.last_calibrate = False
-    
-    def toggle_quant_on(self):
-        for m in self.image_encoder.modules():
-            if type(m) in [QConvLayer, QConvLayerV2]:
-                m.quant_weights = True
-
-    def toggle_quant_off(self):
-        for m in self.image_encoder.modules():
-            if type(m) in [QConvLayer, QConvLayerV2]:
-                m.quant_weights = False
-    
-    def toggle_selective_calibrate_on(self, **kwargs):
-        self.image_encoder.toggle_selective_attribute(attribute="calibrate", **kwargs,)
-        
-    def toggle_selective_calibrate_off(self, **kwargs):
-        self.image_encoder.toggle_selective_attribute(attribute="calibrate", attribute_goal_state=False, **kwargs,)
-
-    def toggle_selective_last_calibrate_on(self, **kwargs):
-        self.image_encoder.toggle_selective_attribute(attribute="last_calibrate", **kwargs,)
-    
-    def toggle_selective_last_calibrate_off(self, **kwargs):
-        self.image_encoder.toggle_selective_attribute(attribute="last_calibrate", attribute_goal_state=False, **kwargs,)
-
-    def toggle_selective_quant_on(self, **kwargs):
-        self.image_encoder.toggle_selective_attribute(attribute="quant_weights", **kwargs,)
-
-    def toggle_selective_quant_off(self, **kwargs):
-        self.image_encoder.toggle_selective_attribute(attribute="quant_weights", attribute_goal_state=False, **kwargs,)
-    '''
-    ######################################################################
-    #       Toggles functions for quantization - better versions         #
+    #                 Toggles functions for quantization                 #
     ######################################################################
 
     ### Simple versions: expects other backbone formats
@@ -559,24 +507,21 @@ class EfficientViTSam(nn.Module):
     ### statistics
     def toggle_monitor_distributions_on(self, **kwargs):
         for m in self.image_encoder.modules():
-            if type(m) in [QConvLayer, QConvLayerV2]:
+            if type(m) in [QConvLayer, QConvLayerV2, QLiteMLA]:
                 m.monitor_distributions = True
 
     def toggle_monitor_distributions_off(self, **kwargs):
         for m in self.image_encoder.modules():
-            if type(m) in [QConvLayer, QConvLayerV2]:
+            if type(m) in [QConvLayer, QConvLayerV2, QLiteMLA]:
                 m.monitor_distributions = False
 
     def get_number_of_quantized_params(self):
         affected = 0
-        unaffected = 0
         for m in self.image_encoder.modules():
-            if type(m) in [QConvLayer, QConvLayerV2]:
+            if type(m) in [QConvLayer, QConvLayerV2]: # These are the only layers holding parameters
                 if m.quant_weights:
                     affected = affected + m.parameter_count()
-                else:
-                    unaffected = unaffected + m.parameter_count()
-        return affected, unaffected
+        return affected
 
     def print_named_parameters(self):
         for name, param in self.image_encoder.named_parameters():
@@ -586,7 +531,7 @@ class EfficientViTSam(nn.Module):
     def print_some_statistics(self):
         counter = 0
         for m in self.image_encoder.modules():
-            if type(m) in [QConvLayer, QConvLayerV2]:
+            if type(m) in [QConvLayer, QConvLayerV2, QLiteMLA]:
                 observer = m.weight_observer
                 if observer.stage_id == 'stage2':
                     counter += 1
@@ -635,16 +580,6 @@ class EfficientViTSam(nn.Module):
 
                         plt.savefig(f'./plots/My_first_boxplot.png')
                         plt.close()
-
-        '''
-        Observer with info: stage2, fmb, conv_weight
-        stored weight tensor: torch.Size([1024, 64, 3, 3])
-        Observer with info: stage2, fmb, conv_weight
-        stored weight tensor: torch.Size([128, 1024, 1, 1])
-        Observer with info: stage2, fmb, conv_weight
-        stored weight tensor: torch.Size([512, 128, 3, 3])
-        Observer with info: stage2, fmb, conv_weight
-        stored weight tensor: torch.Size([128, 512, 1, 1])'''
 
 
 class EfficientViTSamPredictor:

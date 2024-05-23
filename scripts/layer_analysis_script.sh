@@ -183,60 +183,60 @@ L1:neck:11:0
 )
 
 backbones_L2=(
-L2:stage0:0:0
-L2:stage0:1:0
-L2:stage0:1:1
-L2:stage1:0:0
-L2:stage1:0:1
-L2:stage1:1:0
-L2:stage1:1:1
-L2:stage2:0:0
-L2:stage2:0:1
-L2:stage2:1:0
-L2:stage2:1:1
-L2:stage3:0:0
-L2:stage3:0:1
-L2:stage3:0:2
-L2:stage3:1:0
-L2:stage3:1:1
-L2:stage3:1:2
-L2:stage3:2:0
-L2:stage3:2:1
-L2:stage3:2:2
-L2:stage3:3:0
-L2:stage3:3:1
-L2:stage3:3:2
-L2:stage3:4:0
-L2:stage3:4:1
-L2:stage3:4:2
-L2:stage3:5:0
-L2:stage3:5:1
-L2:stage3:5:2
-L2:stage3:6:0
-L2:stage3:6:1
-L2:stage3:6:2
-L2:stage3:7:0
-L2:stage3:7:1
-L2:stage3:7:2
-L2:stage3:8:0
-L2:stage3:8:1
-L2:stage3:8:2
-L2:stage4:0:0
-L2:stage4:0:1
-L2:stage4:0:2
-L2:stage4:1:0
-L2:stage4:1:1
-L2:stage4:1:2
-L2:stage4:1:3
-L2:stage4:1:4
-L2:stage4:1:5
-L2:stage4:2:0
-L2:stage4:2:1
-L2:stage4:2:2
-L2:stage4:2:3
-L2:stage4:2:4
-L2:stage4:2:5
-L2:stage4:3:0
+#L2:stage0:0:0
+#L2:stage0:1:0
+#L2:stage0:1:1
+#L2:stage1:0:0
+#L2:stage1:0:1
+#L2:stage1:1:0
+#L2:stage1:1:1
+#L2:stage2:0:0
+#L2:stage2:0:1
+#L2:stage2:1:0
+#L2:stage2:1:1
+#L2:stage3:0:0
+#L2:stage3:0:1
+#L2:stage3:0:2
+#L2:stage3:1:0
+#L2:stage3:1:1
+#L2:stage3:1:2
+#L2:stage3:2:0
+#L2:stage3:2:1
+#L2:stage3:2:2
+#L2:stage3:3:0
+#L2:stage3:3:1
+#L2:stage3:3:2
+#L2:stage3:4:0
+#L2:stage3:4:1
+#L2:stage3:4:2
+#L2:stage3:5:0
+#L2:stage3:5:1
+#L2:stage3:5:2
+#L2:stage3:6:0
+#L2:stage3:6:1
+#L2:stage3:6:2
+#L2:stage3:7:0
+#L2:stage3:7:1
+#L2:stage3:7:2
+#L2:stage3:8:0
+#L2:stage3:8:1
+#L2:stage3:8:2
+#L2:stage4:0:0
+#L2:stage4:0:1
+#L2:stage4:0:2
+#L2:stage4:1:0
+#L2:stage4:1:1
+#L2:stage4:1:2
+#L2:stage4:1:3
+#L2:stage4:1:4
+#L2:stage4:1:5
+#L2:stage4:2:0
+#L2:stage4:2:1
+#L2:stage4:2:2
+#L2:stage4:2:3
+#L2:stage4:2:4
+#L2:stage4:2:5
+#L2:stage4:3:0
 L2:stage4:3:1
 L2:stage4:3:2
 L2:stage4:3:3
@@ -479,71 +479,73 @@ models=(
 )
 #
 
-WAAAAARNING THE FLAGS ARE SET TO TRUE 
+# WAAAAARNING THE FLAGS ARE SET TO TRUE
 
-echo "--------- STARTING SCRIPT L1 ---------}"
-model=l1_quant
-for backbone_item in "${backbones_L1[@]}"
-do
-  echo " "
-  echo "Model $model, backbone_version: $backbone_item" §
-  # Run the evaluation command for the current model - with --quantize and configurations
-  torchrun --nproc_per_node=2 \
-  eval_sam_model_joel.py \
-  --dataset coco \
-  --image_root coco/val2017 \
-  --dataset_calibration sa-1b \
-  --image_root_calibration sa-1b \
-  --annotation_json_file coco/annotations/instances_val2017.json \
-  --model $model \
-  --limit_iterations 2500 \
-  --prompt_type box \
-  --backbone_version $backbone_item \
-  --quantize_W \
-  --quantize_A \
-  --export_dataframe \
-  --script_name $model
-  # --limit_iterations 10 \
-  # --export_dataframe \
-  # --print_progress \
-  # --plot_distributions \
-  # --quantize_method_W $qmw \
-  # --quantize_A \
-  # --print_torchinfo \
-done
-
-
-echo "--------- STARTING SCRIPT L0 ---------}"
-model=l0_quant
-for backbone_item in "${backbones_L0[@]}"
-do
-  echo " "
-  echo "Model $model, backbone_version: $backbone_item" §
-  # Run the evaluation command for the current model - with --quantize and configurations
-  torchrun --nproc_per_node=2 \
-  eval_sam_model_joel.py \
-  --dataset coco \
-  --image_root coco/val2017 \
-  --dataset_calibration sa-1b \
-  --image_root_calibration sa-1b \
-  --annotation_json_file coco/annotations/instances_val2017.json \
-  --model $model \
-  --limit_iterations 2500 \
-  --prompt_type box \
-  --backbone_version $backbone_item \
-  --quantize_W \
-  --quantize_A \
-  --export_dataframe \
-  --script_name $model
-  # --limit_iterations 10 \
-  # --export_dataframe \
-  # --print_progress \
-  # --plot_distributions \
-  # --quantize_method_W $qmw \
-  # --quantize_A \
-  # --print_torchinfo \
-done
-
+# Tuesday night the experiment only completed to L2:4:3:0
+# 
+# echo "--------- STARTING SCRIPT L1 ---------}"
+# model=l1_quant
+# for backbone_item in "${backbones_L1[@]}"
+# do
+#   echo " "
+#   echo "Model $model, backbone_version: $backbone_item" §
+#   # Run the evaluation command for the current model - with --quantize and configurations
+#   torchrun --nproc_per_node=2 \
+#   eval_sam_model_joel.py \
+#   --dataset coco \
+#   --image_root coco/val2017 \
+#   --dataset_calibration sa-1b \
+#   --image_root_calibration sa-1b \
+#   --annotation_json_file coco/annotations/instances_val2017.json \
+#   --model $model \
+#   --limit_iterations 2500 \
+#   --prompt_type box \
+#   --backbone_version $backbone_item \
+#   --quantize_W \
+#   --quantize_A \
+#   --export_dataframe \
+#   --script_name $model
+#   # --limit_iterations 10 \
+#   # --export_dataframe \
+#   # --print_progress \
+#   # --plot_distributions \
+#   # --quantize_method_W $qmw \
+#   # --quantize_A \
+#   # --print_torchinfo \
+# done
+# 
+# 
+# echo "--------- STARTING SCRIPT L0 ---------}"
+# model=l0_quant
+# for backbone_item in "${backbones_L0[@]}"
+# do
+#   echo " "
+#   echo "Model $model, backbone_version: $backbone_item" §
+#   # Run the evaluation command for the current model - with --quantize and configurations
+#   torchrun --nproc_per_node=2 \
+#   eval_sam_model_joel.py \
+#   --dataset coco \
+#   --image_root coco/val2017 \
+#   --dataset_calibration sa-1b \
+#   --image_root_calibration sa-1b \
+#   --annotation_json_file coco/annotations/instances_val2017.json \
+#   --model $model \
+#   --limit_iterations 2500 \
+#   --prompt_type box \
+#   --backbone_version $backbone_item \
+#   --quantize_W \
+#   --quantize_A \
+#   --export_dataframe \
+#   --script_name $model
+#   # --limit_iterations 10 \
+#   # --export_dataframe \
+#   # --print_progress \
+#   # --plot_distributions \
+#   # --quantize_method_W $qmw \
+#   # --quantize_A \
+#   # --print_torchinfo \
+# done
+# 
 echo "--------- STARTING SCRIPT L2 ---------}"
 model=l2_quant
 for backbone_item in "${backbones_L2[@]}"

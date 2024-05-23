@@ -1,9 +1,6 @@
 #!/bin/bash
 # author: Joel Bengs
-
-# Script for evaluating models  in SAM
-# Box-Prompted Zero-Shot Instance Segmentation
-# Ground Truth Bounding Box
+# Script for extracting distributions
 
 # Get the number of CPU cores
 nb_cpu_threads=$(nproc)
@@ -15,36 +12,40 @@ nproc_per_node=2
 export OMP_NUM_THREADS=$((nb_cpu_threads / nproc_per_node))
 # Note: Time to execute was the same if this was =1 or =32
 
+models=(
+#l0_quant
+#l1_quant
+#l2_quant
+xl0_quant
+xl1_quant
+)
+
 echo "--------- STARTING SCRIPT ---------}"
 
-echo "Plotting distributions of model L0"
+for model in "${models[@]}"
+do
+    echo "Plotting distributions of models"
+    torchrun --nproc_per_node=2 \
+    eval_sam_model_joel.py \
+    --dataset coco \
+    --image_root coco/val2017 \
+    --image_root_calibration coco/minitrain2017 \
+    --annotation_json_file coco/annotations/instances_val2017.json \
+    --model $model \
+    --prompt_type box \
+    --backbone_version any:none:none:none \
+    --limit_iterations 25 \
+    --quantize_W \
+    --quantize_A \
+    --quantize_N \
+    --plot_distributions \
+    --script_name $(basename $0 .sh) # removes the .sh extension and the directory scripts/
+    # --export_dataframe \
+    # --suppress_print \
+    # --plot_distributions \
+    # --print_torchinfo \
+done
 
-torchrun --nproc_per_node=2 \
-eval_sam_model_joel.py \
---dataset coco \
---image_root coco/val2017 \
---image_root_calibration coco/minitrain2017 \
---annotation_json_file coco/annotations/instances_val2017.json \
---model l0_quant \
---prompt_type box \
---backbone_version L0:-:-:- \
---limit_iterations 25 \
---quantize_W \
---plot_distributions \
---suppress_print \
---script_name $(basename $0 .sh) # removes the .sh extension and the directory scripts/
-# --export_dataframe \
-# --suppress_print \
-# --plot_distributions \
-# --quantize_method_W $qmw \
-# --quantize_A \
-# --print_torchinfo \
-# --quantize_N \
-# --quantize_method_A $qma \
-# --quantize_method_N $qmn \
-# --observer-method_A $oma \
-# --observer-method_N $omn \
-
-echo "Finished Distribution plotting of model L0"
+echo "Finished Distribution plotting of all models"
 # make it executable with the command chmod +x scriptname.sh
 # run it with ./scriptname.sh

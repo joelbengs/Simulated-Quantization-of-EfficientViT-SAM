@@ -99,8 +99,9 @@ def plot(df, title: str, xlabel: str, name: str, model: str = 'L0', prompt_type:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='From pickle file to plots')
-    parser.add_argument('--file_path', type=str, default='results_storage', help='The directory of the pickle file')
+    parser.add_argument('--file_path', type=str, default='results_complete', help='The directory of the pickle file')
     parser.add_argument('--file_name', type=str, help='The name of the pickle file to analyse')
+    parser.add_argument('--model', type=str, default='L0',  help='The model of the test, in capital letters')
     args = parser.parse_args()
 
     # load the data from storage
@@ -131,8 +132,9 @@ if __name__ == "__main__":
     ################################################################
 
     # Config for plot's text:
-    model = 'XL1' # 'L1', 'L2', 'XL0', XL1'
-    quant_scheme = 'simulated integer-only' # 'simulated weight-only'
+    # model = 'L0' # 'L1', 'L2', 'XL0', XL1'
+    model = args.model
+    quant_scheme = 'simulated integer-only (weights + activations)' # 'simulated weight-only'
     prompt_type = 'box' #or 'point'
 
     ################################################################

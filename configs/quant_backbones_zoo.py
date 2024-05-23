@@ -33,13 +33,21 @@ You can define your own combinations. The code will toggle the attributes of tho
 # Here you can define any custom backbones you want
 def create_custom_backbones(baseline_dict: dict):
     backbone_dict = baseline_dict
-    models = ['L0','L1','L2','XL0','XL1']
-    for m in models:
-            backbone_dict[f'{m}:all_but_neck:all:all'] =  {
-            'stages': ["unknown", "stage0", "stage1", "stage2", "stage3", "stage4", "stage5"],
-            'block_positions': [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
-            'layer_positions': [0,1,2,3,4,5,6,7,8,9],
-            }
+    backbone_dict['any:none:none:none'] =  {
+        'stages': [],
+        'block_positions': [],
+        'layer_positions': [],
+    }
+    backbone_dict['any:all:all:all'] =  {
+        'stages': ["unknown", "stage0", "stage1", "stage2", "stage3", "stage4", "stage5", "neck"],
+        'block_positions': [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
+        'layer_positions': [0,1,2,3,4,5,6,7,8,9],
+    }
+    backbone_dict['any:all_but_neck:all:all'] =  {
+        'stages': ["unknown", "stage0", "stage1", "stage2", "stage3", "stage4", "stage5"],
+        'block_positions': [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
+        'layer_positions': [0,1,2,3,4,5,6,7,8,9],
+    }
     return backbone_dict
 
 def create_backbone_baselines():

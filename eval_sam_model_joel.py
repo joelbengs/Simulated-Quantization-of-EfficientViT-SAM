@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import torch
 from configs.quant_backbones_zoo import REGISTERED_BACKBONE_VERSIONS
-from efficientvit.models.nn.ops import QConvLayer, QConvLayerV2
+from efficientvit.models.nn.ops import QConvLayer, QConvLayerV2, QLiteMLA
 from efficientvit.models.ptq.bit_type import BitType
 from efficientvit.models.ptq.observer.base import BaseObserver
 from lvis import LVIS
@@ -423,7 +423,7 @@ def save_dataframe_to_file(dataframe: pd.DataFrame, script_name: str) -> None:
     script_name = os.path.splitext(script_name)[0]
     dataframe.to_pickle(path=f'results/{script_name}.pkl')
 
-def toggle_operation(efficientvit_sam, operation, state, backbone_version='FP32_baseline', print_progress=False):
+def toggle_operation(efficientvit_sam, operation, state, backbone_version: str, print_progress=False):
     printout=(local_rank==0 and print_progress is True)
     if state not in ['on', 'off']:
         raise ValueError("State must be either 'on' or 'off'")
@@ -434,24 +434,18 @@ def toggle_operation(efficientvit_sam, operation, state, backbone_version='FP32_
 
 def calculate_savings(efficientvit_sam):
     # calculates the theorethical savings from the applied quantization. Assumes from FP16 to INT8
-    affected, unaffected = efficientvit_sam.get_number_of_quantized_params() #number of weights
-    total = affected + unaffected
+    affected = efficientvit_sam.get_number_of_quantized_params() #number of weights
     bytes_saved = affected #as Int8 saves 8 bits = 1 byte per weight compared to the memory requirement of FP16
     megabytes_saved = affected/1024/1024
-    model_size_mb_original = 2*total/1024/1024 # 2 bytes = 16 bits
-    model_size_mb_quantized = model_size_mb_original - megabytes_saved
-    percentage_saved = 100*(model_size_mb_quantized/model_size_mb_original)
-    print(f"quantized {affected} params to int8, \nsaving {bytes_saved} bytes = {megabytes_saved:.4f} Mb. \n{unaffected} params were unaffected. \n{percentage_saved:.4f}% reduction.")
+    # print(f"quantized {affected} params to int8, \nsaving {megabytes_saved:.2f} Mb compared to FP16.")
+    print(f'saved {megabytes_saved:.2f} Mb')
     return {
         "number of quantized params": affected,
-        "percentage_saved": percentage_saved,
         "bytes_saved": bytes_saved,
         "megabytes_saved": megabytes_saved,
-        "model_size_mb_original": model_size_mb_original,
-        "model_size_mb_quantized": model_size_mb_quantized,
     }
 
-def plot_histogram_of_observer(observer: BaseObserver, sizes):
+def plot_histogram_of_observer(observer: BaseObserver, sizes, model: str):
         if observer.stored_tensor.numel() == 0:
             print(f"The tensor of {observer.stage_id}:{observer.block_position}:{observer.layer_position}:{observer.weight_norm_or_act} observer is empty! Has calibration been performed with attribute monitor_distributions turned on?")
 
@@ -484,7 +478,7 @@ def plot_histogram_of_observer(observer: BaseObserver, sizes):
         ax.set_xlabel("Weight value")
         ax.set_ylabel(f"Relative Frequency of pre-trained weights" if observer.weight_norm_or_act == 'weight' else "Relative Frequency after calibration")
         fig.tight_layout()
-        plt.savefig(f'./plots/histograms/histogram_{observer.stage_id}:{observer.block_position}:{observer.layer_position}_{observer.block_name}_{observer.weight_norm_or_act}.png')
+        plt.savefig(f'./plots/histograms/{model.split("_")[0]}/histogram_{observer.stage_id}:{observer.block_position}:{observer.layer_position}_{observer.block_name}_{observer.weight_norm_or_act}.png')
         plt.close()
 
 def plot_box_plot_of_observer(observer: BaseObserver):
@@ -526,22 +520,22 @@ def plot_box_plot_of_observer(observer: BaseObserver):
         plt.savefig(f'./plots/boxplots/box_plot_{observer.stage_id}:{observer.block_position}:{observer.layer_position}_{observer.weight_norm_or_act}.png')
         plt.close()
 
-def plot_distributions_of_image_encoder(efficientvit_sam):
+def plot_distributions_of_image_encoder(efficientvit_sam, model: str):
     sizes_w = {}
     sizes_a = {}
     sizes_n = {}
     for m in efficientvit_sam.image_encoder.modules():
-        if type(m) in [QConvLayer, QConvLayerV2]:
-            #if hasattr(m, 'weight_observer'):
-            #    plot_histogram_of_observer(m.weight_observer, sizes_w)
+        if type(m) in [QConvLayer, QConvLayerV2, QLiteMLA]:
+            if hasattr(m, 'weight_observer'):
+                plot_histogram_of_observer(m.weight_observer, sizes_w, model)
                 # plot_box_plot_of_observer(m.weight_observer)
 
-            #if hasattr(m, 'act_observer'):
-             #   plot_histogram_of_observer(m.act_observer, sizes_a)
+            if hasattr(m, 'act_observer'):
+                plot_histogram_of_observer(m.act_observer, sizes_a, model)
                 # plot_box_plot_of_observer(m.act_observer)
 
             if hasattr(m, 'norm_observer'):
-                plot_histogram_of_observer(m.norm_observer, sizes_n)
+                plot_histogram_of_observer(m.norm_observer, sizes_n, model)
                 # plot_box_plot_of_observer(m.act_observer)
     print("size of weight tensors")
     for key in sizes_w.keys():
@@ -553,7 +547,7 @@ def plot_distributions_of_image_encoder(efficientvit_sam):
     for key in sizes_n.keys():
         print(key, sizes_n[key])
 
-def full_precision_distribution_analysis(efficientvit_sam):
+def full_precision_distribution_analysis(efficientvit_sam, model: str):
     '''
     This function plots the distributions of weights, activations and norms of a given model.
     The results are saved under .plots/histograms and .plots/box_plots
@@ -562,18 +556,19 @@ def full_precision_distribution_analysis(efficientvit_sam):
     When the attribute "monitor_distirbutions" is toggled to True, the observer object will store all sample tensors passing through during calibration.
     Weights are static, so more than one pass of calibration will not alter the weight distributions.
     Tensors passing throgh norm and activation will be concatenated in the observer. There is a risk for memory overflow, in which case the tensors should be reduced to histogram representations before storage.
-    
+    However, this is not implemented, so do limit the iterations in calibration using the argument --limit_iterations 100.
+
     After calibration, the tensor stored in each observer is processed into a histogram and exported with matplotlib.
 
     To plot the  call the main method with:
     
-    --model l0_quant - or any other quant model. only models using a quantizable backbone and neck can be analyzed
-    --backbone_version L0:-:- - or another FP32 baseline backbone. If anything is quantized during calibration, activations and norms are distorted
-    --plot_distributions - this will trigger this function
+    --model l0_quant                            or any other quant model. only models using a quantizable backbone and neck can be analyzed
+    --backbone_version (any)                    Monitoring occurs during calibration, not inference, so nothing is quantized
+    --plot_distributions                        this will trigger this functionality
 
     '''
     # assuming efficientvit_sam.toggle_monitor_distributions_on() has been called before calibration, and calibration has been run for at least one sample.
-    plot_distributions_of_image_encoder(efficientvit_sam)
+    plot_distributions_of_image_encoder(efficientvit_sam, model)
     efficientvit_sam.toggle_monitor_distributions_off()
 
 if __name__ == "__main__":
@@ -597,10 +592,9 @@ if __name__ == "__main__":
     parser.add_argument('--limit_iterations', type=int, default=2500, help="How many calibration samples to use at the maximum, per GPU") 
     parser.add_argument('--print_torchinfo', action='store_true', help="printouts information about the PyTorch model. Adjust depth in the main method")
 
-    parser.add_argument("--quantize", action="store_true", help="Turn on quantization and calibration for weights, activations, or norms")
     parser.add_argument("--quantize_W", action="store_true", help="Turn on quantization and calibration for weights")
     parser.add_argument("--quantize_A", action="store_true", help="Turn on quantization and calibration for activations")
-    parser.add_argument("--quantize_N", action="store_true", help="Turn on quantization and calibration for norms")
+    parser.add_argument("--quantize_N", action="store_true", help="Turn on quantization and calibration for norms (Warning: experimental feature)")
 
     parser.add_argument("--observer_method_W", choices=["minmax", "ema", "omse", "percentile"])
     parser.add_argument("--observer_method_A", choices=["minmax", "ema", "omse", "percentile"])
@@ -615,7 +609,7 @@ if __name__ == "__main__":
     parser.add_argument("--calibration_mode_N", choices=["layer_wise", "channel_wise"])
 
     parser.add_argument("--plot_distributions", action="store_true", help="monitors and plots distributions of weiights and activations. Must be used with _quant model and should be used with an FP32 backbone")
-    parser.add_argument("--backbone_version", type=str, default='FP32_baseline')
+    parser.add_argument("--backbone_version", type=str, help="backbones are defined in quant_backbones_zoo.py")
     args = parser.parse_args()
 
     # Quantization details are built stored in a Config object, passed into the model
@@ -624,23 +618,19 @@ if __name__ == "__main__":
     # colums for dataframes when running scripts.
     columns = [
         "model",
-        "prompt_type",
         "backbone_version",
+        "prompt_type",
         "quantize_W",
-        "quantize_N",
         "quantize_A",
-        "observer_method_W",
-        "observer_method_N",
-        "observer_method_A",
-        "quantize_method_W",
-        "quantize_method_N",
-        "quantize_method_A",
+        "quantize_N",
         "num_click",
         "dataset",
         "dataset_calibration",
         "image_root",
         "image_root_calibration",
-        "limit_iterations"
+        "limit_iterations",
+        "annotation_json_file",
+        "source_json_file",
     ]
 
     if args.single_gpu:
@@ -704,7 +694,7 @@ if __name__ == "__main__":
             toggle_operation(efficientvit_sam, 'quant_norms', 'on', args.backbone_version, args.print_progress)
 
     if args.plot_distributions and local_rank == 0:
-        full_precision_distribution_analysis(efficientvit_sam)
+        full_precision_distribution_analysis(efficientvit_sam, model=args.model)
 
     # inference
     if args.prompt_type == "point":
@@ -727,6 +717,9 @@ if __name__ == "__main__":
             df = evaluate_to_dataframe(df, results, args.prompt_type, args.dataset, args.annotation_json_file, args=args)
             print("New row added to results: \n", df.tail(1))
             save_dataframe_to_file(df, args.script_name)
+            print("")
+            evaluate(results, args.prompt_type, args.dataset, args.annotation_json_file)
+            calculate_savings(efficientvit_sam)
         else:
             print("")
             evaluate(results, args.prompt_type, args.dataset, args.annotation_json_file)
