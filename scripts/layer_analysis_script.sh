@@ -481,38 +481,6 @@ models=(
 
 # WAAAAARNING THE FLAGS ARE SET TO TRUE
 
-# Tuesday night the experiment only completed to L2:4:3:0
-# 
-# echo "--------- STARTING SCRIPT L1 ---------}"
-# model=l1_quant
-# for backbone_item in "${backbones_L1[@]}"
-# do
-#   echo " "
-#   echo "Model $model, backbone_version: $backbone_item" §
-#   # Run the evaluation command for the current model - with --quantize and configurations
-#   torchrun --nproc_per_node=2 \
-#   eval_sam_model_joel.py \
-#   --dataset coco \
-#   --image_root coco/val2017 \
-#   --dataset_calibration sa-1b \
-#   --image_root_calibration sa-1b \
-#   --annotation_json_file coco/annotations/instances_val2017.json \
-#   --model $model \
-#   --limit_iterations 2500 \
-#   --prompt_type box \
-#   --backbone_version $backbone_item \
-#   --quantize_W \
-#   --quantize_A \
-#   --export_dataframe \
-#   --script_name $model
-#   # --limit_iterations 10 \
-#   # --export_dataframe \
-#   # --print_progress \
-#   # --plot_distributions \
-#   # --quantize_method_W $qmw \
-#   # --quantize_A \
-#   # --print_torchinfo \
-# done
 # 
 # 
 # echo "--------- STARTING SCRIPT L0 ---------}"
@@ -546,6 +514,39 @@ models=(
 #   # --print_torchinfo \
 # done
 # 
+
+# 
+# echo "--------- STARTING SCRIPT L1 ---------}"
+# model=l1_quant
+# for backbone_item in "${backbones_L1[@]}"
+# do
+#   echo " "
+#   echo "Model $model, backbone_version: $backbone_item" §
+#   # Run the evaluation command for the current model - with --quantize and configurations
+#   torchrun --nproc_per_node=2 \
+#   eval_sam_model_joel.py \
+#   --dataset coco \
+#   --image_root coco/val2017 \
+#   --dataset_calibration sa-1b \
+#   --image_root_calibration sa-1b \
+#   --annotation_json_file coco/annotations/instances_val2017.json \
+#   --model $model \
+#   --limit_iterations 2500 \
+#   --prompt_type box \
+#   --backbone_version $backbone_item \
+#   --quantize_W \
+#   --quantize_A \
+#   --export_dataframe \
+#   --script_name $model
+#   # --limit_iterations 10 \
+#   # --export_dataframe \
+#   # --print_progress \
+#   # --plot_distributions \
+#   # --quantize_method_W $qmw \
+#   # --quantize_A \
+#   # --print_torchinfo \
+# done
+
 echo "--------- STARTING SCRIPT L2 ---------}"
 model=l2_quant
 for backbone_item in "${backbones_L2[@]}"
@@ -609,39 +610,3 @@ do
 done
 
 echo "--------- EVERYTHING COMPLETED ---------}"
-
-#for bbv in "${backbone_versions[@]}"
-#do
-#  echo "Model $model, backbone_version: $bbv" §
-#  # Run the evaluation command for the current model - with --quantize and configurations
-#  torchrun --nproc_per_node=2 \
-#  eval_sam_model_joel.py \
-#  --dataset coco \
-#  --image_root coco/val2017 \
-#  --dataset_calibration sa-1b \
-#  --image_root_calibration sa-1b \
-#  --annotation_json_file coco/annotations/instances_val2017.json \
-#  --model $model \
-#  --limit_iterations 10 \
-#  --prompt_type box \
-#  --backbone_version $bbv \
-#  --quantize_W \
-#  --quantize_N \
-#  --quantize_A \
-#  --script_name $(basename $0 .sh) # removes the .sh extension and the directory scripts/
-#  # --limit_iterations 10 \
-#  # --export_dataframe \
-#  # --print_progress \
-#  # --plot_distributions \
-#  # --quantize_method_W $qmw \
-#  # --quantize_A \
-#  # --print_torchinfo \
-#  # --quantize_N \
-#  # --quantize_method_A $qma \
-#  # --quantize_method_N $qmn \
-#  # --observer-method_A $oma \
-#  # --observer-method_N $omn \
-#done
-
-# Execute view_results.py
-#python view_pickle_file.py --pickle_file_path results --script_name $(basename $0 .sh) --view_all_columns
