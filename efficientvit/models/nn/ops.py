@@ -1451,6 +1451,14 @@ class QLiteMLA(nn.Module):
             self.config.QUANTIZER_A,
             self.config.CALIBRATION_MODE_A,
             )
+        
+        self.proj_observer, self.proj_quantizer = self.build_observer_and_quantizer(
+            'act', # used in class BaseObserver for distrubution monitoring
+            self.config.BIT_TYPE_A,
+            self.config.OBSERVER_A,
+            self.config.QUANTIZER_A,
+            self.config.CALIBRATION_MODE_A,
+            )
 
     def build_observer_and_quantizer(self, weight_norm_or_act: str, bit_type, observer_str, quantizer_str, calibration_mode):
         observer = build_observer(
@@ -1566,7 +1574,18 @@ class QLiteMLA(nn.Module):
                 self.act_quantizer.update_quantization_params()
         if self.quant_activations:
             out = self.act_quantizer(out)
-        out = self.proj(out) # runs it through projection
+
+        # projection
+        out = self.proj(out)
+        
+        if self.monitor_distributions:
+            self.proj_observer.store_tensor(out.clone()) # to freely move it between devices in analysis
+        if self.calibrate:
+            self.proj_quantizer.observer.update(out)
+            if self.last_calibrate:
+                self.proj_quantizer.update_quantization_params()
+        if self.quant_activations:
+            out = self.proj_quantizer(out)
 
         return out
 
