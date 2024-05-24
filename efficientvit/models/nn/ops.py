@@ -769,6 +769,7 @@ class QConvLayer(nn.Module):
             if self.quant_norms:
                 x = self.norm_quantizer(x)
         
+        #lets change stuff
         # activation
         if self.act:
             x = self.act(x)
