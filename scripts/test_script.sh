@@ -52,7 +52,7 @@ do
     --image_root_calibration sa-1b \
     --annotation_json_file coco/annotations/instances_val2017.json \
     --model $model \
-    --limit_iterations 4500 \
+    --limit_iterations 100 \
     --prompt_type box \
     --backbone_version $backbone_item \
     --quantize_W \
@@ -60,6 +60,7 @@ do
     --observer_method_W $obsmethod \
     --observer_method_A $obsmethod \
     --calibration_mode_W channel_wise \
+    --print_progress \
     --script_name $model
     # --limit_iterations 10 \
     # --export_dataframe \
