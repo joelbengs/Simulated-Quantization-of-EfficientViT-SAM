@@ -8,7 +8,7 @@ class Config:
 
         self.BIT_TYPE_W = BIT_TYPE_DICT['int8']
         self.BIT_TYPE_N = BIT_TYPE_DICT['int8']
-        self.BIT_TYPE_A = BIT_TYPE_DICT['uint8']
+        self.BIT_TYPE_A = BIT_TYPE_DICT['int8'] # ['uint8'] would be preferable, but we dont work at that granularity.
 
         # choices=["minmax", "ema", "omse", "percentile"], but omse and percentile throws errors.
         self.OBSERVER_W = args.observer_method_W if args.observer_method_W is not None else 'ema'
