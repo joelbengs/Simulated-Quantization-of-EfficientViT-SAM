@@ -57,17 +57,18 @@ def plot(df, title: str, xlabel: str, name: str, model: str = 'L0', prompt_type:
         ax.scatter(df['backbone_version'], df['adjusted_performance_measure'], c=colors)
     else:
         ax.plot(df['backbone_version'], df[performance_measure])
+        ax.scatter(df['backbone_version'], df[performance_measure])
 
 
     if add_descriptions:
         # Add description to each data point where 'all' score is substantially lower than baseline
         for i, val in df.iterrows(): # index and row data
             if zoom:
-                if val[performance_measure] < baseline_value-0.1:
+                if val[performance_measure] < baseline_value-0.15: # L2: 0.3
                     # using adjustText library to avoid overlapping text
                     texts.append(ax.text(val['backbone_version'], val['adjusted_performance_measure'] - 0.1, f"{description_dict[val['backbone_version']]}"))
             else:
-                if val[performance_measure] < baseline_value-0.1:
+                if val[performance_measure] < baseline_value-2:
                     #ax.text(val['backbone_version'], val[performance_measure], f"{description_dict[val['backbone_version']]}")
                     texts.append(ax.text(val['backbone_version'], val[performance_measure] - 0.1, f"{description_dict[val['backbone_version']]}"))
         adjust_text(texts)  # adjust text to minimize overlaps
