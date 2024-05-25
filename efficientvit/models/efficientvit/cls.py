@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 
 from efficientvit.models.efficientvit.backbone import EfficientViTBackbone, EfficientViTLargeBackbone, EfficientViTBackboneQuant
-from efficientvit.models.nn import ConvLayer, LinearLayer, OpSequential, QConvLayer, QLinearLayer
+from efficientvit.models.nn import ConvLayer, LinearLayer, OpSequential, QConvLayer
 from efficientvit.models.utils import build_kwargs_from_config
 
 # imports of quantized layers needed for the toggle functions

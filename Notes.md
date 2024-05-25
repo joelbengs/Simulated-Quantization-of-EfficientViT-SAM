@@ -99,8 +99,6 @@ Attention scaling pointwise layer: The dips inside the attention blocks all come
 There are some dips in stage4 stemming from MB-conv exit layers as well.
 
 
-
-
    L0:stage0:0:0                        864
    L0:stage0:1:0                      9,216
    L0:stage0:1:1                      9,216
@@ -170,3 +168,7 @@ There are some dips in stage4 stemming from MB-conv exit layers as well.
      L0:neck:6:0                    589,824
      L0:neck:6:1                     65,536
      L0:neck:7:0                     65,792
+
+
+
+ 

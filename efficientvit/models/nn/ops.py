@@ -14,6 +14,7 @@ from efficientvit.models.utils import get_same_padding, list_sum, resize, val2li
 from efficientvit.models.ptq import BIT_TYPE_DICT
 from efficientvit.models.ptq.observer import build_observer
 from efficientvit.models.ptq.quantizer import build_quantizer
+from quant_config import Config
 
 __all__ = [
     ## basic layers ##
@@ -30,12 +31,11 @@ __all__ = [
     "EfficientViTBlock",
     ## functional blocks ##
     "ResidualBlock",
-        "DAGBlock",
+    "DAGBlock",
     "OpSequential",
     ## quantized basic layers ##
     "QConvLayer",
     "QConvLayerV2", # special inheritance version
-    "QLinearLayer",
     ## quantized basic blocks ##
     "QDSConv",
     "QMBConv",
@@ -598,6 +598,7 @@ class OpSequential(nn.Module):
 #                          Quantized Basic Layers                               #
 #################################################################################
 
+
 # Implementaiton inspired by QConv2d from FQ-ViT/models/ptq/layers.py    
 ### REMEBER TO CHECK SO THAT BOTH THIS ONE AND V2 ARE UP TO DATE WITH EACH OTHER
 '''
@@ -619,15 +620,15 @@ class QConvLayer(nn.Module):
             dropout=0,
             norm="bn2d",
             act_func="relu",
+            # quantization configuration object, required
+            config: Config=None,
             # custom arguments
-            quant=False,
-            calibrate=False,
-            last_calibrate=False,
-            monitor_distributions=False,    # makes the observer monitor distributions
-            bit_type=BIT_TYPE_DICT['int8'], # needs expansion into W A N
-            calibration_mode='layer_wise',
-            observer_str='minmax',
-            quantizer_str='uniform',
+            quant_weights=False, # toggles the quantizer of input weights (excluding bias and excluding normalization parameters)
+            quant_norms=False, # toggles the quantizer placed after the normalization layer
+            quant_activations=False, # toggles the quantizer after activation function
+            calibrate=False, # toggle calibration
+            last_calibrate=False, # to make the quantizer fetch the latest params when calibration finishes
+            monitor_distributions=False, # make sure quant is toggled off when monitoring FP32 distributions
             stage_id='unknown',
             block_position = 'unknown',
             layer_position = 'unknown',
@@ -657,15 +658,13 @@ class QConvLayer(nn.Module):
         self.act = build_act(act_func)  # builds nn.Module if not None
 
         # Custom arguments
-        self.quant = quant
+        self.quant_weights = quant_weights
+        self.quant_norms = quant_norms
+        self.quant_activations = quant_activations
         self.calibrate = calibrate
         self.last_calibrate = last_calibrate
         self.monitor_distributions=monitor_distributions
 
-        self.bit_type = bit_type
-        self.calibration_mode = calibration_mode
-        self.observer_str = observer_str
-        self.quantizer_str = quantizer_str
         self.module_type = 'conv_weight'
         self.stage_id = stage_id
         self.block_position = block_position
@@ -677,23 +676,64 @@ class QConvLayer(nn.Module):
         self.conv_is_attention_scaling = conv_is_attention_scaling
         self.conv_is_attention_projection = conv_is_attention_projection
 
-        # observer for weights
-        self.weight_observer, self.weight_quantizer = self.build_observer_and_quantizer('weight')
+        self.config = config
+
+         # observer for weights
+        self.weight_observer, self.weight_quantizer = self.build_observer_and_quantizer(
+            'weight',
+            self.config.BIT_TYPE_W,
+            self.config.OBSERVER_W,
+            self.config.QUANTIZER_W,
+            self.config.CALIBRATION_MODE_W,
+            )
 
          # observer for norms
         if self.norm is not None:
-            self.norm_observer, self.norm_quantizer = self.build_observer_and_quantizer('norm')
+            self.norm_observer, self.norm_quantizer = self.build_observer_and_quantizer(
+                'norm',
+                self.config.BIT_TYPE_N,
+                self.config.OBSERVER_N,
+                self.config.QUANTIZER_N,
+                self.config.CALIBRATION_MODE_N,
+                )
+
+
 
         # observer for activations
         if self.act is not None:
-            self.act_observer, self.act_quantizer = self.build_observer_and_quantizer('act')
-
-    def build_observer_and_quantizer(self, weight_norm_or_act: str):
+            self.act_observer, self.act_quantizer = self.build_observer_and_quantizer(
+                'act',
+                self.config.BIT_TYPE_A,
+                self.config.OBSERVER_A,
+                self.config.QUANTIZER_A,
+                self.config.CALIBRATION_MODE_A,
+                )
+        
+        # to quantize incoming activations, in case the previous layer has protected under mixed-precision.
+        self.input_observer, self.input_quantizer = self.build_observer_and_quantizer(
+            'act',
+            self.config.BIT_TYPE_A,
+            self.config.OBSERVER_A,
+            self.config.QUANTIZER_A,
+            self.config.CALIBRATION_MODE_A,
+            )
+        
+                
+        # to quantize incoming activations, in case the previous layer has protected under mixed-precision.
+        self.matmul_observer, self.matmul_quantizer = self.build_observer_and_quantizer(
+            'act',
+            self.config.BIT_TYPE_A,
+            self.config.OBSERVER_A,
+            self.config.QUANTIZER_A,
+            self.config.CALIBRATION_MODE_A,
+            )
+        
+    def build_observer_and_quantizer(self, weight_norm_or_act: str, bit_type, observer_str, quantizer_str, calibration_mode):
         observer = build_observer(
-            self.observer_str,
+            observer_str,
             self.module_type, 
-            self.bit_type,
-            self.calibration_mode,
+            bit_type,
+            calibration_mode,
             # kwargs
             stage_id=self.stage_id,
             block_position=self.block_position,
@@ -707,54 +747,104 @@ class QConvLayer(nn.Module):
             weight_norm_or_act=weight_norm_or_act,
         )
         quantizer = build_quantizer(
-            self.quantizer_str,
-            self.bit_type,
+            quantizer_str,
+            bit_type,
             observer,
             self.module_type,
         )
         return observer, quantizer
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Below, a total of five quantizers are present
+        # The first quantizes the input x, which is necesarry if the previous layer was floating point under mixed-precision quantization
+        # The second quantizes the layer's weight tensor
+        # The third quantizes the layer's norm layer, and this one is not fully implemented/experimental
+        # The fourth quantizes the layer's intermediate tensor, before activation function
+        # the fifth quantizes again after activation, if there exists a layer there
 
+        # to quantize incoming activations, in case the previous layer has protected under mixed-precision.
+        if self.calibrate:
+            self.input_quantizer.observer.update(x)
+            if self.last_calibrate:
+                self.input_quantizer.update_quantization_params()
+        if self.quant_activations:
+            x = self.input_quantizer(x)
+
+        # calibrate weights, and monitor
         if self.monitor_distributions:
             self.weight_observer.store_tensor(self.conv.weight)
-
-        # calibrate
         if self.calibrate:
             self.weight_quantizer.observer.update(self.conv.weight) # for all batches of calibration data: update statistics
-            if self.last_calibrate:                          # after the last batch, fetch S and Z of the quantizer
-                self.weight_quantizer.update_quantization_params(x)
+            if self.last_calibrate:                                 # after the last batch, fetch S and Z of the quantizer
+                self.weight_quantizer.update_quantization_params()
+        
         # dropout
         if self.dropout is not None:
             x = self.dropout(x)
 
-        # quantization
-        if self.quant:
-            # quant + dequant the weights
+        # inference weights, with or without quantization
+        if self.quant_weights:
             w = self.weight_quantizer(self.conv.weight)
-            # passing the parameters from self.conv to F.conv2d
+            # passing the quantized weights to F.conv2d to bypass initialized conv
             x = F.conv2d(x, w, self.conv.bias, self.conv.stride, self.conv.padding, self.conv.dilation, self.conv.groups)
+            # Replace x = self.norm(x) with a call similar to the one above.
         else:
             x = self.conv(x)
          
-        # normalization
+        # post matmul quantizer.
+        if self.calibrate:
+            self.matmul_quantizer.observer.update(x)
+            if self.last_calibrate:
+                self.matmul_quantizer.update_quantization_params()
+        if self.quant_activations:
+            x = self.matmul_quantizer(x)
+
+        # normalization and its quantizer
         if self.norm:
+           # if self.quant_weights:
+           #     # Extract the parameters of batchnorm2D
+           #     weight = self.norm.weight.data
+           #     bias = self.norm.bias.data
+           #     running_mean = self.norm.running_mean
+           #     running_var = self.norm.running_var
+           #     # Apply batch normalization with quantized weights
+           #     x = F.batch_norm(x, running_mean, running_var, weight, bias, self.norm.training, self.norm.momentum, self.norm.eps)
+
             x = self.norm(x)
+            #weights = self.norm.weight.data
+            #print("weights:", weights)
+
             if self.monitor_distributions:
                 self.norm_observer.store_tensor(x.clone()) # to freely move it between devices in analysis
+            if self.calibrate:
+                self.norm_quantizer.observer.update(x)
+                if self.last_calibrate:
+                    self.norm_quantizer.update_quantization_params()
+            if self.quant_activations: # Note! Not quant_norms
+                x = self.norm_quantizer(x)
+                if not self.act: # x has just been quantized and there is no more operation in this layer. This is often the case
+                    return x
         
         # activation
         if self.act:
             x = self.act(x)
+
             if self.monitor_distributions:
                 self.act_observer.store_tensor(x.clone()) # to freely move it between devices in analysis
-
+            if self.calibrate:
+                self.act_quantizer.observer.update(x)
+                if self.last_calibrate:
+                    self.act_quantizer.update_quantization_params()
+            if self.quant_activations:
+                x = self.act_quantizer(x)
         return x
     
     def parameter_count(self):
+        # omitting the parameters of the norm layer
         num_weights = self.conv.weight.numel()
         num_biases = self.conv.bias.numel() if self.conv.bias is not None else 0
         return num_weights + num_biases
+
 
 
 class QConvLayerV2(nn.Conv2d):
@@ -770,15 +860,15 @@ class QConvLayerV2(nn.Conv2d):
             dropout=0,
             norm="bn2d",
             act_func="relu",
+            # quantization configuration object, required
+            config: Config=None,
             # custom arguments
-            quant=False,
+            quant_weights=False,
+            quant_norms=False,
+            quant_activations=False,
             calibrate=False,
             last_calibrate=False,
             monitor_distributions=False,    # makes the observer monitor distributions
-            bit_type=BIT_TYPE_DICT['int8'],
-            calibration_mode='layer_wise',
-            observer_str='minmax',
-            quantizer_str='uniform',
             stage_id='unknown',
             block_position = 'unknown',
             layer_position = 'unknown',
@@ -817,15 +907,13 @@ class QConvLayerV2(nn.Conv2d):
         self.act = build_act(act_func)  # builds nn.Module if not None
 
         # Custom arguments
-        self.quant = quant
+        self.quant_weights = quant_weights
+        self.quant_norms = quant_norms
+        self.quant_activations = quant_activations
         self.calibrate = calibrate
         self.last_calibrate = last_calibrate
         self.monitor_distributions=monitor_distributions
 
-        self.bit_type = bit_type
-        self.calibration_mode = calibration_mode
-        self.observer_str = observer_str
-        self.quantizer_str = quantizer_str
         self.module_type = 'conv_weight'
         self.stage_id = stage_id
         self.block_position = block_position
@@ -837,23 +925,60 @@ class QConvLayerV2(nn.Conv2d):
         self.conv_is_attention_scaling = conv_is_attention_scaling
         self.conv_is_attention_projection = conv_is_attention_projection
 
-        # observer for weights
-        self.weight_observer, self.weight_quantizer = self.build_observer_and_quantizer('weight')
+        self.config = config
+
+         # observer for weights
+        self.weight_observer, self.weight_quantizer = self.build_observer_and_quantizer(
+            'weight',
+            self.config.BIT_TYPE_W,
+            self.config.OBSERVER_W,
+            self.config.QUANTIZER_W,
+            self.config.CALIBRATION_MODE_W,
+            )
 
          # observer for norms
         if self.norm is not None:
-            self.norm_observer, self.norm_quantizer = self.build_observer_and_quantizer('norm')
+            self.norm_observer, self.norm_quantizer = self.build_observer_and_quantizer(
+                'norm',
+                self.config.BIT_TYPE_N,
+                self.config.OBSERVER_N,
+                self.config.QUANTIZER_N,
+                self.config.CALIBRATION_MODE_N,
+                )
 
-        # observer for activations
-        if self.act is not None:
-            self.act_observer, self.act_quantizer = self.build_observer_and_quantizer('act')
+        # observer for activations, no matter if the layer has an activation function or not
+        self.act_observer, self.act_quantizer = self.build_observer_and_quantizer(
+            'act',
+            self.config.BIT_TYPE_A,
+            self.config.OBSERVER_A,
+            self.config.QUANTIZER_A,
+            self.config.CALIBRATION_MODE_A,
+            )
+        
+        # to quantize incoming activations, in case the previous layer has protected under mixed-precision.
+        self.input_observer, self.input_quantizer = self.build_observer_and_quantizer(
+            'act',
+            self.config.BIT_TYPE_A,
+            self.config.OBSERVER_A,
+            self.config.QUANTIZER_A,
+            self.config.CALIBRATION_MODE_A,
+            )
+                        
+        # to quantize incoming activations, in case the previous layer has protected under mixed-precision.
+        self.matmul_observer, self.matmul_quantizer = self.build_observer_and_quantizer(
+            'act',
+            self.config.BIT_TYPE_A,
+            self.config.OBSERVER_A,
+            self.config.QUANTIZER_A,
+            self.config.CALIBRATION_MODE_A,
+            )
 
-    def build_observer_and_quantizer(self, weight_norm_or_act):
+    def build_observer_and_quantizer(self, weight_norm_or_act: str, bit_type, observer_str, quantizer_str, calibration_mode):
         observer = build_observer(
-            self.observer_str,
+            observer_str,
             self.module_type, 
-            self.bit_type,
-            self.calibration_mode,
+            bit_type,
+            calibration_mode,
             # kwargs
             stage_id=self.stage_id,
             block_position=self.block_position,
@@ -867,18 +992,32 @@ class QConvLayerV2(nn.Conv2d):
             weight_norm_or_act=weight_norm_or_act,
         )
         quantizer = build_quantizer(
-            self.quantizer_str,
-            self.bit_type,
+            quantizer_str,
+            bit_type,
             observer,
             self.module_type,
         )
         return observer, quantizer
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Below, a total of five quantizers are present
+        # The first quantizes the input x (if quant_actvations == True) which is necesarry if the previous layer was floating point under mixed-precision quantization
+        # The second quantizes the layer's weight tensor (if quant_weights == Tru)
+        # the third quantizes the output of the matmul
+        # The fourth quantizes the layer's norm layer, but is never active in QConvLayer V2
+        # The fifth quantizes the layer's output.
+
+        # to quantize incoming activations, in case the previous layer has protected under mixed-precision.
+        if self.calibrate:
+            self.input_quantizer.observer.update(x)
+            if self.last_calibrate:
+                self.input_quantizer.update_quantization_params()
+        if self.quant_activations:
+            x = self.input_quantizer(x)
+
+        # monitorn and calibrate weight distributions (static), so just one or several samples doesn't matter.
         if self.monitor_distributions:
             self.weight_quantizer.observer.store_tensor(self.weight)
-
-        # calibrate
         if self.calibrate:
             self.weight_quantizer.observer.update(self.weight) # for all batches of calibration data: update statistics
             if self.last_calibrate:                     # after the last batch, fetch S and Z of the quantizer
@@ -889,106 +1028,60 @@ class QConvLayerV2(nn.Conv2d):
             x = self.dropout(x)
 
         # quantization
-        if self.quant:
+        if self.quant_weights:
             # quant + dequant the weights
             w = self.weight_quantizer(self.weight)
             # passing the parameters from self.conv to F.conv2d
             x = F.conv2d(x, w, self.bias, self.stride, self.padding, self.dilation, self.groups)
         else:
             x = super().forward(x)  # Conv2d is inherited in V2, instead of an attribute
+
+        # post matmul quantizer
+        if self.calibrate:
+            self.matmul_quantizer.observer.update(x)
+            if self.last_calibrate:
+                self.matmul_quantizer.update_quantization_params()
+        if self.quant_activations:
+            x = self.matmul_quantizer(x)
          
-        # normalization
+        # normalization. However, QConvLayerV2 is only used på the QLiteMLa architecture, and those instances never have a norm layer or activation function
         if self.norm:
             x = self.norm(x)
+
             if self.monitor_distributions:
                 self.norm_observer.store_tensor(x.clone()) # to freely move it between devices in analysis
-        
-        # activation
+            if self.calibrate:
+                self.norm_quantizer.observer.update(x)
+                if self.last_calibrate:
+                    self.norm_quantizer.update_quantization_params()
+            if self.quant_activations: # Note! Not quant_norms
+                x = self.norm_quantizer(x)
+
+        # activation (inactive in QConvLayerV2)
         if self.act:
             x = self.act(x)
+
             if self.monitor_distributions:
                 self.act_observer.store_tensor(x.clone()) # to freely move it between devices in analysis
+            if self.calibrate:
+                self.act_quantizer.observer.update(x)
+                if self.last_calibrate:
+                    self.act_quantizer.update_quantization_params()
+            if self.quant_activations:
+                x = self.act_quantizer(x)
 
         return x
 
     def parameter_count(self):
+        # omitting the parameters of the norm layer
         num_weights = self.weight.numel()
         num_biases = self.bias.numel() if self.bias is not None else 0
         return num_weights + num_biases
 
 
-class QLinearLayer(nn.Module):
-    def __init__(
-        self,
-        in_features: int,
-        out_features: int,
-        use_bias=True,
-        dropout=0,
-        norm=None,
-        act_func=None,
-        # custom arguments
-        quant=False,
-        calibrate=False,
-        last_calibrate=False,
-        bit_type=BIT_TYPE_DICT['int8'],
-        calibration_mode='layer_wise',
-        observer_str='minmax',
-        quantizer_str='uniform',
-        stage_id='unknown',
-        block_name='independent',
-        block_is_bottleneck=False,
-        ):
-        super().__init__()
 
-        self.dropout = nn.Dropout(dropout, inplace=False) if dropout > 0 else None
-        self.linear = nn.Linear(in_features, out_features, use_bias)
-        self.norm = build_norm(norm, num_features=out_features)
-        self.act = build_act(act_func)
-
-        # Custom arguments
-        self.quant = quant
-        self.calibrate = calibrate
-        self.last_calibrate = last_calibrate
-        self.bit_type = bit_type
-        self.calibration_mode = calibration_mode
-        self.observer_str = observer_str
-        self.quantizer_str = quantizer_str
-        self.module_type = 'linear_weight'
-        self.state_id=stage_id
-        self.block_name=block_name
-        self.block_is_bottleneck=block_is_bottleneck
-        observer_object = build_observer(self.observer_str, self.module_type, 
-                                       self.bit_type, self.calibration_mode) # in FQ-ViT, this is saved as self.observer for no reason
-        self.quantizer = build_quantizer(self.quantizer_str, self.bit_type,
-                                          observer_object, self.module_type)
-
-    def _try_squeeze(self, x: torch.Tensor) -> torch.Tensor:
-        if x.dim() > 2:
-            x = torch.flatten(x, start_dim=1)
-        return x
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self._try_squeeze(x)
-        if self.dropout:
-            x = self.dropout(x)
-        # calibration
-        if self.calibrate:
-            self.quantizer.observer.update(self.linear.weight)
-            if self.last_calibrate:
-                self.quantizer.update_quantization_params(x)
-        
-        # quantization
-        if self.quant:
-            w = self.quantizer(self.linear.weight)
-            x = F.linear(x, w, self.linear.bias)
-        else:        
-            x = self.linear(x)
-
-        if self.norm:
-            x = self.norm(x)
-        if self.act:
-            x = self.act(x)
-        return x
+# As EfficientViT-SAM's image encoder never uses the Linear Layer, we've omitted a quantized implementation
+# class QLinearLayer(nn.Module)
 
 #################################################################################
 #                         Quantized Basic Blocks                                #
@@ -1064,9 +1157,9 @@ class QMBConv(nn.Module):
         act_func = val2tuple(act_func, 3)
         mid_channels = mid_channels or round(in_channels * expand_ratio)
 
-        # if this QMBConv follows after a LiteMultiscaleAttention module, it will have layer indexes 4,5,6
+        # if this QMBConv follows after a LiteMultiscaleAttention module, it will have layer indexes 5,6,7
         if part_of_efficientViT_module:
-            layer_positions = [4,5,6]
+            layer_positions = [3,4,5]
         else:
             layer_positions = [0,1,2]
 
@@ -1081,38 +1174,59 @@ class QMBConv(nn.Module):
             layer_position=layer_positions[0],
             **kwargs, # config arguments
         )
-        self.depth_conv = QConvLayer(
-            mid_channels,
-            mid_channels,
-            kernel_size,
-            stride=stride,
-            groups=mid_channels,
-            norm=norm[1],
-            act_func=act_func[1],
-            use_bias=use_bias[1],
-            layer_position=layer_positions[1],
-            **kwargs, # config arguments
-        )
-        self.point_conv = QConvLayer(
-            mid_channels,
-            out_channels,
-            1,
-            norm=norm[2],
-            act_func=act_func[2],
-            use_bias=use_bias[2],
-            layer_position=layer_positions[2],
-            **kwargs, # config arguments
-        )
 
-        # Used for testing a model with this layer in FP32
-        '''        self.point_conv = ConvLayer(
-            mid_channels,
-            out_channels,
-            1,
-            norm=norm[2],
-            act_func=act_func[2],
-            use_bias=use_bias[2],
-        )'''
+        # layer-wise analysis showed these layers to be sensitive to quantization.
+        # Toggle her to experiment with them protected
+        # note that they will not show up in printouts, since printouts iterate over instances of QConvLayer
+        protect_sensitive_depthwise_conv_to_FP32 = True
+        if protect_sensitive_depthwise_conv_to_FP32:
+                self.depth_conv = ConvLayer(
+                mid_channels,
+                mid_channels,
+                kernel_size,
+                stride=stride,
+                groups=mid_channels,
+                norm=norm[1],
+                act_func=act_func[1],
+                use_bias=use_bias[1],
+            )
+        else:
+            self.depth_conv = QConvLayer(
+                mid_channels,
+                mid_channels,
+                kernel_size,
+                stride=stride,
+                groups=mid_channels,
+                norm=norm[1],
+                act_func=act_func[1],
+                use_bias=use_bias[1],
+                layer_position=layer_positions[1],
+                **kwargs, # config arguments
+            )
+
+        # this layer was also found to be sensitive
+        protect_sensitive_pointwise_conv_to_FP32 = True
+        if protect_sensitive_pointwise_conv_to_FP32:
+            self.point_conv = ConvLayer(
+                mid_channels,
+                out_channels,
+                1,
+                norm=norm[2],
+                act_func=act_func[2],
+                use_bias=use_bias[2],
+            )
+        else:
+            self.point_conv = QConvLayer(
+                mid_channels,
+                out_channels,
+                1,
+                norm=norm[2],
+                act_func=act_func[2],
+                use_bias=use_bias[2],
+                layer_position=layer_positions[2],
+                **kwargs, # config arguments
+            )
+
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.inverted_conv(x)
@@ -1222,7 +1336,6 @@ class QResBlock(nn.Module):
         return x
 
 # Not used in backbone.py directly, only via QEfficientVitBlock
-# Not Quantized yet!
 class QLiteMLA(nn.Module):
     r"""Lightweight multi-scale linear attention"""
 
@@ -1235,13 +1348,35 @@ class QLiteMLA(nn.Module):
         dim=8,
         use_bias=False,
         norm=(None, "bn2d"),
-        act_func=(None, None),
+        act_func=(None, None), # Gelu passed in implicitly via kwargs
         kernel_func="relu",
         scales: tuple[int, ...] = (5,), # hinting that it should be a tuple of integers, and initializing it with a tuple containing the single integer 5. XL-models have (3,) for some layers. Large models have (5,)
         eps=1.0e-15,
         **kwargs,
     ):
         super().__init__()
+
+        try:
+            # A special implementatin because the framework was designed to only place quantizers in the QConvLayer. Here we hijack the arguments
+            self.config = kwargs.get('config')
+            self.quant_activations=False
+            self.calibrate=False
+            self.last_calibrate=False
+            self.monitor_distributions=False
+            self.module_type='activation' # used in class BaseObserver to reshape tensors correctly
+            self.stage_id=kwargs.get('stage_id')
+            self.block_position=kwargs.get('block_position')
+            self.layer_position=1 # inside each EfficientViT module, we number the Self-attention part 1 as it follows convolution number 0 (the QKV generation + multi-scale convs are considered as one)
+            self.block_name=kwargs.get('block_name')
+            self.block_is_bottleneck=kwargs.get('block_is_bottleneck')
+            self.block_is_neck=False
+            self.conv_is_attention_qkv=False
+            self.conv_is_attention_scaling=False
+            self.conv_is_attention_projection=False
+        except KeyError:
+            print("a config object was not passed to QLiteMLA as expected")
+
+
         self.eps = eps
         heads = heads or int(in_channels // dim * heads_ratio)
 
@@ -1249,26 +1384,29 @@ class QLiteMLA(nn.Module):
 
         use_bias = val2tuple(use_bias, 2)
         norm = val2tuple(norm, 2)
-        act_func = val2tuple(act_func, 2)
+        act_func = val2tuple(act_func, 2) # gelu, gelu
 
         self.dim = dim
         self.qkv = QConvLayer(
             in_channels,
-            3 * total_dim,
+            3 * total_dim, # we need to generate three different matrices (Q, K, V) each of total_dim dimensions. We then split it in three parts
             1,
             use_bias=use_bias[0], # False
             norm=norm[0],         # override to b2nd
             act_func=act_func[0], # override to Gelu
             conv_is_attention_qkv=True,
             layer_position=0,
-            **kwargs,
+            **kwargs, # config arguments
         )
 
         '''
-
-        The pretrained weights have state keys on the form aggreg.0.0.weights, because here nn.Conv2D was used directly unlike elsewhere in EfficientViT
+        Explanation for QConvLayer vs QConvLayerV2:
+        The pretrained weights have state keys on the form aggreg.0.0.weights, because here nn.Conv2D was used directly unlike elsewhere in EfficientViT.
         Using QConvLayer(nn.Module) causes state dict keys on the form aggreg.0.0.conv.weights, because the nn.Conv2D is an attribute named conv in the module.
-        One solution is to rebuild QConvLayer to inherit from nn.Conv2D instead of nn.Module, but this might alter other state keys in the model.'''
+        One solution is to rebuild QConvLayer to inherit from nn.Conv2D instead of nn.Module, but this might alter other state keys in the model.
+        Therefore we use a V2 implementation of QConvLayer, which inherits nn.Conv2D directly instead of nn.Module
+        '''
+        # Multi scale linear attention
         self.aggreg = nn.ModuleList(
             [
                 nn.Sequential(
@@ -1282,8 +1420,8 @@ class QLiteMLA(nn.Module):
                         norm=None,
                         act_func=None,
                         conv_is_attention_scaling=True,
-                        layer_position=1,
-                        **kwargs,
+                        layer_position=0,
+                        **kwargs, # config arguments
                     ),
                     QConvLayerV2(
                         in_channels = 3 * total_dim,
@@ -1294,15 +1432,15 @@ class QLiteMLA(nn.Module):
                         norm=None,
                         act_func=None,
                         conv_is_attention_scaling=True,
-                        layer_position=2,
-                        **kwargs,
+                        layer_position=0,
+                        **kwargs, # config arguments
                     )
                 )
                 for scale in scales # Note: scales only ever contain one element: 3 or 5. Thus this is not a loop in practice.
             ]
         )
 
-        self.kernel_func = build_act(kernel_func, inplace=False)
+        self.kernel_func = build_act(kernel_func, inplace=False) # relu, not overriden to anything else
 
         self.proj = QConvLayer(
             total_dim * (1 + len(scales)),
@@ -1312,9 +1450,109 @@ class QLiteMLA(nn.Module):
             norm=norm[1],         # override to bn2d
             act_func=act_func[1], # override to gelu
             conv_is_attention_projection=True,
-            layer_position=3,
-            **kwargs,
+            layer_position=2,
+            **kwargs, # config arguments
         )
+
+        # observer for attention activations. There weights are dealt with inside the QConvLayer of self.qkv 
+        self.act_observer, self.act_quantizer = self.build_observer_and_quantizer(
+            'act', # used in class BaseObserver for distrubution monitoring
+            self.config.BIT_TYPE_A,
+            self.config.OBSERVER_A,
+            self.config.QUANTIZER_A,
+            self.config.CALIBRATION_MODE_A,
+            )
+
+        # observer for input activations.
+        self.Q_observer, self.Q_quantizer = self.build_observer_and_quantizer(
+            'act', # used in class BaseObserver for distrubution monitoring
+            self.config.BIT_TYPE_A,
+            self.config.OBSERVER_A,
+            self.config.QUANTIZER_A,
+            self.config.CALIBRATION_MODE_A,
+            )
+
+        # observer for input activations.
+        self.K_observer, self.K_quantizer = self.build_observer_and_quantizer(
+            'act', # used in class BaseObserver for distrubution monitoring
+            self.config.BIT_TYPE_A,
+            self.config.OBSERVER_A,
+            self.config.QUANTIZER_A,
+            self.config.CALIBRATION_MODE_A,
+            )
+
+                # observer for input activations.
+        self.V_observer, self.V_quantizer = self.build_observer_and_quantizer(
+            'act', # used in class BaseObserver for distrubution monitoring
+            self.config.BIT_TYPE_A,
+            self.config.OBSERVER_A,
+            self.config.QUANTIZER_A,
+            self.config.CALIBRATION_MODE_A,
+            )
+
+        # observer for after relu of q.
+        self.reluQ_observer, self.reluQ_quantizer = self.build_observer_and_quantizer(
+            'act', # used in class BaseObserver for distrubution monitoring
+            self.config.BIT_TYPE_A,
+            self.config.OBSERVER_A,
+            self.config.QUANTIZER_A,
+            self.config.CALIBRATION_MODE_A,
+            )
+        
+        # observer for after relu of k activations.
+        self.reluK_observer, self.reluK_quantizer = self.build_observer_and_quantizer(
+            'act', # used in class BaseObserver for distrubution monitoring
+            self.config.BIT_TYPE_A,
+            self.config.OBSERVER_A,
+            self.config.QUANTIZER_A,
+            self.config.CALIBRATION_MODE_A,
+            )
+        
+        # observer for after matmul1
+        self.matmul1_observer, self.matmul1_quantizer = self.build_observer_and_quantizer(
+            'act', # used in class BaseObserver for distrubution monitoring
+            self.config.BIT_TYPE_A,
+            self.config.OBSERVER_A,
+            self.config.QUANTIZER_A,
+            self.config.CALIBRATION_MODE_A,
+            )
+        
+        # observer for after matmul2
+        self.matmul2_observer, self.matmul2_quantizer = self.build_observer_and_quantizer(
+            'act', # used in class BaseObserver for distrubution monitoring
+            self.config.BIT_TYPE_A,
+            self.config.OBSERVER_A,
+            self.config.QUANTIZER_A,
+            self.config.CALIBRATION_MODE_A,
+            )
+        
+
+
+    def build_observer_and_quantizer(self, weight_norm_or_act: str, bit_type, observer_str, quantizer_str, calibration_mode):
+        observer = build_observer(
+            observer_str,
+            self.module_type, 
+            bit_type,
+            calibration_mode,
+            # kwargs
+            stage_id=self.stage_id,
+            block_position=self.block_position,
+            layer_position=self.layer_position,
+            block_name=self.block_name,
+            block_is_bottleneck=self.block_is_bottleneck,
+            block_is_neck=self.block_is_neck,
+            conv_is_attention_qkv=self.conv_is_attention_qkv,
+            conv_is_attention_scaling=self.conv_is_attention_scaling,
+            conv_is_attention_projection=self.conv_is_attention_projection,
+            weight_norm_or_act=weight_norm_or_act,
+        )
+        quantizer = build_quantizer(
+            quantizer_str,
+            bit_type,
+            observer,
+            self.module_type,
+        )
+        return observer, quantizer
 
     @autocast(enabled=False)
     def relu_linear_att(self, qkv: torch.Tensor) -> torch.Tensor:
@@ -1339,16 +1577,61 @@ class QLiteMLA(nn.Module):
             qkv[..., 2 * self.dim :],
         )
 
-        # lightweight linear attention
+
+        # quant of input qkv
+        if self.calibrate:
+            self.Q_quantizer.observer.update(q)
+            self.K_quantizer.observer.update(k)
+            self.V_quantizer.observer.update(v)
+            if self.last_calibrate:
+                self.Q_quantizer.update_quantization_params(q)
+                self.K_quantizer.update_quantization_params(k)
+                self.V_quantizer.update_quantization_params(v)
+        if self.quant_activations:
+            q = self.Q_quantizer(q)
+            k = self.K_quantizer(k)
+            v = self.V_quantizer(v)
+
+
         q = self.kernel_func(q) # ReLu nn.Module
         k = self.kernel_func(k) # ReLu nn.Module
 
-        # linear matmul
-        trans_k = k.transpose(-1, -2)
+        # quant of relus
+        if self.calibrate:
+            self.reluQ_quantizer.observer.update(q)
+            self.reluK_quantizer.observer.update(k)
+            if self.last_calibrate:
+                self.reluQ_quantizer.update_quantization_params()
+                self.reluK_quantizer.update_quantization_params()
+        if self.quant_activations:
+            q = self.reluQ_quantizer(q)
+            k = self.reluK_quantizer(k)
 
+        trans_k = k.transpose(-1, -2)
         v = F.pad(v, (0, 1), mode="constant", value=1)
+
+        # matmul k and v
         kv = torch.matmul(trans_k, v)
+
+        # quant of first matmul (the second is quantized after the self-attention)
+        if self.calibrate:
+            self.matmul1_quantizer.observer.update(kv)
+            if self.last_calibrate:
+                self.matmul1_quantizer.update_quantization_params()
+        if self.quant_activations:
+            kv = self.matmul1_quantizer(kv)
+
+        # matmul q and (kv)
         out = torch.matmul(q, kv)
+
+        # quant of second matmul
+        if self.calibrate:
+            self.matmul2_quantizer.observer.update(out)
+            if self.last_calibrate:
+                self.matmul2_quantizer.update_quantization_params()
+        if self.quant_activations:
+            out = self.matmul2_quantizer(out)
+
         out = out[..., :-1] / (out[..., -1:] + self.eps)
 
         out = torch.transpose(out, -1, -2)
@@ -1356,14 +1639,26 @@ class QLiteMLA(nn.Module):
         return out
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # generate multi-scale q, k, v
-        qkv = self.qkv(x)
-        multi_scale_qkv = [qkv]
-        for op in self.aggreg:
+        
+        qkv = self.qkv(x) # generate no-scale q, k, v from the input tensor x.
+        multi_scale_qkv = [qkv] # initiate a list with only the no-scale qkv.
+        for op in self.aggreg: # returns the nn.Sequential, not the individual QConvLayers. Only once (since there is only one scale)
             multi_scale_qkv.append(op(qkv))
-        multi_scale_qkv = torch.cat(multi_scale_qkv, dim=1)
+        multi_scale_qkv = torch.cat(multi_scale_qkv, dim=1) # concatenates the no-scale and the scaled qkv matrix to one tensor
+    
+        out = self.relu_linear_att(multi_scale_qkv)  # runs the tensor through the relu linear attention. For clarity, we visualize this as seperate attention modules, but the code implements only one module after concatenation.
 
-        out = self.relu_linear_att(multi_scale_qkv)
+        # quantization after self-attention
+        if self.monitor_distributions:
+            self.act_observer.store_tensor(out.clone()) # to freely move it between devices in analysis
+        if self.calibrate:
+            self.act_quantizer.observer.update(out)
+            if self.last_calibrate:
+                self.act_quantizer.update_quantization_params()
+        if self.quant_activations:
+            out = self.act_quantizer(out)
+
+        # projection (quantized in the QConvLayer)
         out = self.proj(out)
 
         return out
@@ -1376,9 +1671,9 @@ class QEfficientViTBlock(nn.Module):
         heads_ratio: float = 1.0,
         dim=32,
         expand_ratio: float = 4,
-        scales=(5,),            #XL-models have (3,) for some layers. Large models have (5,)
+        scales=(5,), #XL-models have (3,) for some layers. Large models have (5,)
         norm="bn2d",
-        act_func="hswish",
+        act_func="hswish", # override to gelu
         **kwargs,
     ):
         super().__init__()
@@ -1390,7 +1685,7 @@ class QEfficientViTBlock(nn.Module):
                 dim=dim,
                 norm=(None, norm),
                 scales=scales,
-                **kwargs,
+                **kwargs, # config arguments
             ),
             IdentityLayer(),
         )
@@ -1402,7 +1697,7 @@ class QEfficientViTBlock(nn.Module):
             norm=(None, None, norm),
             act_func=(act_func, act_func, None),
             part_of_efficientViT_module=True,
-            **kwargs,
+            **kwargs, # config arguments
         )
         self.local_module = ResidualBlock(local_module, IdentityLayer())
 

@@ -13,9 +13,10 @@ class PercentileObserver(BaseObserver):
                  bit_type,
                  calibration_mode,
                  percentile_sigma=0.01,
-                 percentile_alpha=0.99999):
+                 percentile_alpha=0.99999,
+                 **kwargs):
         super(PercentileObserver, self).__init__(module_type, bit_type,
-                                                 calibration_mode)
+                                                 calibration_mode, **kwargs)
         self.percentile_sigma = 0.01
         self.percentile_alpha = 0.99999
         self.symmetric = self.bit_type.signed

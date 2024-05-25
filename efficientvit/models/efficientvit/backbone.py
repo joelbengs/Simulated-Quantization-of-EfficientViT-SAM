@@ -662,10 +662,7 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                 norm=norm,
                 act_func=act_func,
                  # configs
-                bit_type=self.config.BIT_TYPE_W,
-                calibration_mode=self.config.CALIBRATION_MODE_W,
-                observer_str=self.config.OBSERVER_W,
-                quantizer_str=self.config.QUANTIZER_W,
+                config = self.config,
                 stage_id="stage0",
                 block_position=0,            # block position within the stage
                 layer_position=0,
@@ -686,10 +683,7 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                 act_func=act_func,              # gelu, None
                 fewer_norm=fewer_norm_list[0],  # False
                 # configs
-                bit_type=self.config.BIT_TYPE_W,
-                calibration_mode=self.config.CALIBRATION_MODE_W,
-                observer_str=self.config.OBSERVER_W,
-                quantizer_str=self.config.QUANTIZER_W,
+                config = self.config,
                 stage_id="stage0",
                 block_position=i+1,              # block position within the stage
                 block_name=block_list[0],        # res, passed to the QConvLayer
@@ -723,10 +717,7 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                 act_func=act_func,
                 fewer_norm=fewer_norm_list[stage_id],   # only true in the last two stages
                 # config
-                bit_type=self.config.BIT_TYPE_W,
-                calibration_mode=self.config.CALIBRATION_MODE_W,
-                observer_str=self.config.OBSERVER_W,
-                quantizer_str=self.config.QUANTIZER_W,
+                config = self.config,
                 stage_id="stage%d" % stage_id,
                 block_position=0,
                 block_name="mb" if block_list[stage_id] not in ["mb", "fmb"] else block_list[stage_id],
@@ -746,10 +737,8 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                             scales=(3,) if block_list[stage_id] == "att@3" else (5,), # XL-models ONLY use 3scaling, all other only use 5-scaling
                             norm=norm,
                             act_func=act_func,
-                            bit_type=self.config.BIT_TYPE_W,
-                            calibration_mode=self.config.CALIBRATION_MODE_W,
-                            observer_str=self.config.OBSERVER_W,
-                            quantizer_str=self.config.QUANTIZER_W,
+                            # config
+                            config = self.config,
                             stage_id="stage%d" % stage_id,
                             block_position=i+1,
                             block_name=block_list[stage_id],
@@ -767,10 +756,7 @@ class EfficientViTLargeBackboneQuant(nn.Module):
                         act_func=act_func,
                         fewer_norm=fewer_norm_list[stage_id],      # only true in the last two stages
                         # config
-                        bit_type=self.config.BIT_TYPE_W,
-                        calibration_mode=self.config.CALIBRATION_MODE_W,
-                        observer_str=self.config.OBSERVER_W,
-                        quantizer_str=self.config.QUANTIZER_W,
+                        config = self.config,
                         stage_id="stage%d" % stage_id,
                         block_position=i+1,
                         block_name=block_list[stage_id],

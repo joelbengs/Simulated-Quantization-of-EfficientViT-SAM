@@ -34,7 +34,6 @@ from efficientvit.models.nn import (
     ## quantized basic layers ##
     QConvLayer,
     QConvLayerV2,
-    QLinearLayer,
     ## quantized basic blocks ##
     QDSConv,
     QMBConv,
@@ -218,10 +217,7 @@ class QSamNeck(DAGBlock):
                         norm=norm, 
                         act_func=None,
                         # configs
-                        bit_type=config.BIT_TYPE_W,
-                        calibration_mode=config.CALIBRATION_MODE_W,
-                        observer_str=config.OBSERVER_W,
-                        quantizer_str=config.QUANTIZER_W,
+                        config = config,
                         stage_id='neck',
                         block_position = i,
                         layer_position = 0,
@@ -243,10 +239,7 @@ class QSamNeck(DAGBlock):
                     norm=norm,
                     act_func=(act_func, act_func, None),
                     # configs
-                    bit_type=config.BIT_TYPE_W,
-                    calibration_mode=config.CALIBRATION_MODE_W,
-                    observer_str=config.OBSERVER_W,
-                    quantizer_str=config.QUANTIZER_W,
+                    config = config,
                     stage_id='neck',
                     block_position=i+1+len(fid_list),
                     block_name=middle_op,
@@ -260,10 +253,7 @@ class QSamNeck(DAGBlock):
                     norm=norm,
                     act_func=(act_func, None),
                     # configs
-                    bit_type=config.BIT_TYPE_W,
-                    calibration_mode=config.CALIBRATION_MODE_W,
-                    observer_str=config.OBSERVER_W,
-                    quantizer_str=config.QUANTIZER_W,
+                    config = config,
                     stage_id='neck',
                     block_position=i+len(fid_list),
                     block_name=middle_op,
@@ -277,10 +267,7 @@ class QSamNeck(DAGBlock):
                     norm=norm,
                     act_func=(act_func, None),
                     # configs
-                    bit_type=config.BIT_TYPE_W,
-                    calibration_mode=config.CALIBRATION_MODE_W,
-                    observer_str=config.OBSERVER_W,
-                    quantizer_str=config.QUANTIZER_W,
+                    config = config,
                     stage_id='neck',
                     block_position=i+1+len(fid_list),
                     block_name=middle_op,
@@ -302,10 +289,7 @@ class QSamNeck(DAGBlock):
                         norm=None,
                         act_func=None,
                         # configs
-                        bit_type=config.BIT_TYPE_W,
-                        calibration_mode=config.CALIBRATION_MODE_W,
-                        observer_str=config.OBSERVER_W,
-                        quantizer_str=config.QUANTIZER_W,
+                        config = config,
                         stage_id='neck',
                         block_position=len(fid_list)+head_depth,
                         layer_position=0,
@@ -337,93 +321,37 @@ class EfficientViTSamImageEncoder(nn.Module):
         output = self.norm(output)
         return output
 
-    # quantizes only specificed parts. Can be specified by stages, by block names, by the intersection of both. Can be specified to save bottlenecks
-    # toggle the specified attribute for all modules in the intersection of stages and blocknames.
-    # Exclude the 
     def toggle_selective_attribute(
             self, 
             attribute: str,
             attribute_goal_state=True,
             printout=False,
-            stages=["unknown", "stage0", "stage1", "stage2", "stage4", "stage5", "neck"],
-            block_position= [0,1,2,3,4,5,6,7,8,9],
-            layer_position= [0,1,2,3,4,5,6,7,8,9],
-            block_names=['independent', "res", "mb", "fmb", "att", "att@3", "att@5"], # could be more scales, must build a general solution for any scale
-            spare_bottlenecks=False,
-            spare_attention_qkv=False,
-            spare_attention_scaling=False,
-            spare_attention_projection=False,
-            ):
-        count_all = count_candidates = count_affected = 0
-        for m in self.modules():
-            count_all = count_all + 1
-            if type(m) in [QConvLayer, QConvLayerV2]:
-                count_candidates = count_candidates + 1
-                # TODO: Make these set the attribute to False to protect human logic error
-                if m.block_is_bottleneck and spare_bottlenecks:
-                    if printout: print(f"spared bottleneck: {m.block_name} in {m.stage_id}", f"                module {count_all} of type {type(m)}")
-                    continue # skips to the next iteration
-                if m.block_name.startswith("att"):
-                    if spare_attention_qkv and m.conv_is_attention_qkv:
-                        if printout: print(f"spared QKV of {m.block_name} in {m.stage_id}", f"                module {count_all} of type {type(m)}")
-                        continue
-                    if spare_attention_scaling and m.conv_is_attention_scaling:
-                        if printout: print(f"spared scaling of {m.block_name} in {m.stage_id}", f"                module {count_all} of type {type(m)}")
-                        continue
-                    if  spare_attention_projection and m.conv_is_attention_projection:
-                        if printout: print(f"spared projection of {m.block_name} in {m.stage_id}", f"                module {count_all} of type {type(m)}")
-                        continue
-
-                if m.stage_id in stages and m.block_name in block_names:
-                    if hasattr(m, attribute):
-                        setattr(m, attribute, attribute_goal_state)
-                        count_affected = count_affected + 1
-                        if printout: print(f"{attribute} {m.block_name} in {m.stage_id}", f"                module {count_all} of type {type(m)}:")
-                    else:
-                        print(f"Warning: {attribute} does not exist in {m}")
-            else:
-                if printout and False: # toggle to view all model for debugging
-                    print(f"No {attribute} implemented for module {count_all} of type {type(m)}")
-        if printout:
-            print(f"SUMMARY: toggle_selective has toggled attribute {attribute} to {attribute_goal_state} for {count_affected} out of {count_all} modules. There were {count_candidates} QConvLayers.\nStages = {stages} and block_names = {block_names}.")
-            spared_parts = []
-            if spare_bottlenecks:
-                spared_parts.append('bottlenecks')
-            if spare_attention_qkv:
-                spared_parts.append('attention qkv')
-            if spare_attention_scaling:
-                spared_parts.append('attention scaling')
-            if spare_attention_projection:
-                spared_parts.append('attention projection')
-            print(f"Spared parts: {', '.join(spared_parts)}" if spared_parts else "Did not spare any parts.")
-
-    def simple_toggle_selective_attribute(
-            self, 
-            attribute: str,
-            attribute_goal_state=True,
-            printout=False,
             stages=None, #required: format [string, string, string]
-            block_positions=None, #required: format [int, int, int]
+            block_positions=None, #optional: format [int, int, int]
             layer_positions=None, #optional: format [int, int, int]
             ):
 
         if stages is None or block_positions is None:
             raise NotImplementedError('The backbone format is incompatible with the expected format: stages and block_position must be specified')
 
-        count_all = count_candidates = count_affected = 0
+        count_all = count_affected = count_QConvLayer = count_QLiteMLA = 0
         for m in self.modules():
-            count_all = count_all + 1
-            if type(m) in [QConvLayer, QConvLayerV2]:
-                count_candidates = count_candidates + 1
+            count_all += 1
+            if type(m) in [QConvLayer, QConvLayerV2, QLiteMLA]:
+                if type(m) == QLiteMLA:
+                    count_QLiteMLA += 1
+                else:
+                    count_QConvLayer += 1
                 if m.stage_id in stages:
-                    if m.block_position in block_positions:
-                        if layer_positions is None or m.layer_position in layer_positions:
+                    if block_positions is None or m.block_position in block_positions: # None means to quantize the entire block
+                        if layer_positions is None or m.layer_position in layer_positions: # None means to quantize the entire stage
                             if hasattr(m, attribute):
                                 setattr(m, attribute, attribute_goal_state)
-                                count_affected = count_affected + 1
+                                count_affected += 1
                                 if printout: print(f"{attribute} == {attribute_goal_state} for {m.block_name}-layer with id {m.stage_id}:{m.block_position}:{m.layer_position}", f"                module {count_all} of type {type(m)}:")
                             else:
-                                print(f"Warning: {attribute} does not exist in {m}")
+                                if type(m) in [QConvLayer, QConvLayerV2]: # its okay for QLiteMLA to not have all attributes
+                                    print(f"Warning: {attribute} does not exist in module: {m}")
                         else:
                             if printout: print(f"Attribute {attribute} on module {m.stage_id}:{m.block_position}:{m.layer_position} was not affected due to layer condition", f"                module {count_all} of type {type(m)}:")
                     else:
@@ -432,8 +360,7 @@ class EfficientViTSamImageEncoder(nn.Module):
                     if printout: print(f"Attribute {attribute} on module {m.stage_id}:{m.block_position}:{m.layer_position} was not affected due to stage condition", f"                module {count_all} of type {type(m)}:")
 
         if printout:
-            print(f"SUMMARY: Attribute {attribute} to {attribute_goal_state} for {count_affected} out of {count_all} modules. There were {count_candidates} QConvLayers.\nStages = {stages} and block_positions = {block_positions} and layer_positions = {layer_positions}.")
-
+            print(f"SUMMARY: Attribute {attribute} to {attribute_goal_state} for {count_affected} out of {count_all} modules. There were {count_QConvLayer} QConvLayers and {count_QLiteMLA} QLiteMLA layers.\nStages = {stages} and block_positions = {block_positions} and layer_positions = {layer_positions}.")
 
 class EfficientViTSam(nn.Module):
     mask_threshold: float = 0.0
@@ -485,36 +412,7 @@ class EfficientViTSam(nn.Module):
     #                 Toggles functions for quantization                 #
     ######################################################################
 
-    def toggle_calibrate_on(self):
-        for m in self.image_encoder.modules():
-            if type(m) in [QConvLayer, QConvLayerV2]:
-                m.calibrate = True
-
-    def toggle_calibrate_off(self):
-        for m in self.image_encoder.modules():
-            if type(m) in [QConvLayer, QConvLayerV2]:
-                m.calibrate = False
-
-    def toggle_last_calibrate_on(self):
-        for m in self.image_encoder.modules():
-            if type(m) in [QConvLayer, QConvLayerV2]:
-                m.last_calibrate = True
-
-    def toggle_last_calibrate_off(self):
-      for m in self.image_encoder.modules():
-            if type(m) in [QConvLayer, QConvLayerV2]:
-                m.last_calibrate = False
-    
-    def toggle_quant_on(self):
-        for m in self.image_encoder.modules():
-            if type(m) in [QConvLayer, QConvLayerV2]:
-                m.quant = True
-
-    def toggle_quant_off(self):
-        for m in self.image_encoder.modules():
-            if type(m) in [QConvLayer, QConvLayerV2]:
-                m.quant = False
-    
+    ### Simple versions: expects other backbone formats
     def toggle_selective_calibrate_on(self, **kwargs):
         self.image_encoder.toggle_selective_attribute(attribute="calibrate", **kwargs,)
         
@@ -527,63 +425,52 @@ class EfficientViTSam(nn.Module):
     def toggle_selective_last_calibrate_off(self, **kwargs):
         self.image_encoder.toggle_selective_attribute(attribute="last_calibrate", attribute_goal_state=False, **kwargs,)
 
-    def toggle_selective_quant_on(self, **kwargs):
-        self.image_encoder.toggle_selective_attribute(attribute="quant", **kwargs,)
+    def toggle_selective_quant_weights_on(self, **kwargs):
+        self.image_encoder.toggle_selective_attribute(attribute="quant_weights", **kwargs,)
 
-    def toggle_selective_quant_off(self, **kwargs):
-        self.image_encoder.toggle_selective_attribute(attribute="quant", attribute_goal_state=False, **kwargs,)
+    def toggle_selective_quant_weights_off(self, **kwargs):
+        self.image_encoder.toggle_selective_attribute(attribute="quant_weights", attribute_goal_state=False, **kwargs,)
 
-    ### Simple versions: expects other backbone formats
-    def simple_toggle_selective_calibrate_on(self, **kwargs):
-        self.image_encoder.simple_toggle_selective_attribute(attribute="calibrate", **kwargs,)
-        
-    def simple_toggle_selective_calibrate_off(self, **kwargs):
-        self.image_encoder.simple_toggle_selective_attribute(attribute="calibrate", attribute_goal_state=False, **kwargs,)
+    def toggle_selective_quant_activations_on(self, **kwargs):
+        self.image_encoder.toggle_selective_attribute(attribute="quant_activations", **kwargs,)
 
-    def simple_toggle_selective_last_calibrate_on(self, **kwargs):
-        self.image_encoder.simple_toggle_selective_attribute(attribute="last_calibrate", **kwargs,)
-    
-    def simple_toggle_selective_last_calibrate_off(self, **kwargs):
-        self.image_encoder.simple_toggle_selective_attribute(attribute="last_calibrate", attribute_goal_state=False, **kwargs,)
+    def toggle_selective_quant_activations_off(self, **kwargs):
+        self.image_encoder.toggle_selective_attribute(attribute="quant_activations", attribute_goal_state=False, **kwargs,)
 
-    def simple_toggle_selective_quant_on(self, **kwargs):
-        self.image_encoder.simple_toggle_selective_attribute(attribute="quant", **kwargs,)
+    def toggle_selective_quant_norms_on(self, **kwargs):
+        self.image_encoder.toggle_selective_attribute(attribute="quant_norms", **kwargs,)
 
-    def simple_toggle_selective_quant_off(self, **kwargs):
-        self.image_encoder.simple_toggle_selective_attribute(attribute="quant", attribute_goal_state=False, **kwargs,)
+    def toggle_selective_quant_norms_off(self, **kwargs):
+        self.image_encoder.toggle_selective_attribute(attribute="quant_norms", attribute_goal_state=False, **kwargs,)
 
     ### statistics
     def toggle_monitor_distributions_on(self, **kwargs):
         for m in self.image_encoder.modules():
-            if type(m) in [QConvLayer, QConvLayerV2]:
+            if type(m) in [QConvLayer, QConvLayerV2, QLiteMLA]:
                 m.monitor_distributions = True
 
     def toggle_monitor_distributions_off(self, **kwargs):
         for m in self.image_encoder.modules():
-            if type(m) in [QConvLayer, QConvLayerV2]:
+            if type(m) in [QConvLayer, QConvLayerV2, QLiteMLA]:
                 m.monitor_distributions = False
 
     def get_number_of_quantized_params(self):
         affected = 0
-        unaffected = 0
         for m in self.image_encoder.modules():
-            if type(m) in [QConvLayer, QConvLayerV2]:
-                if m.quant:
+            if type(m) in [QConvLayer, QConvLayerV2]: # These are the only layers holding parameters
+                if m.quant_weights:
                     affected = affected + m.parameter_count()
-                else:
-                    unaffected = unaffected + m.parameter_count()
-        return affected, unaffected
+        return affected
 
     def print_named_parameters(self):
         for name, param in self.image_encoder.named_parameters():
             print("param name:", name)
             print("param.size():", param.size())
 
-
     def print_some_statistics(self):
         counter = 0
         for m in self.image_encoder.modules():
-            if type(m) in [QConvLayer, QConvLayerV2]:
+            if type(m) in [QConvLayer, QConvLayerV2, QLiteMLA]:
                 observer = m.weight_observer
                 if observer.stage_id == 'stage2':
                     counter += 1
@@ -632,16 +519,6 @@ class EfficientViTSam(nn.Module):
 
                         plt.savefig(f'./plots/My_first_boxplot.png')
                         plt.close()
-
-        '''
-        Observer with info: stage2, fmb, conv_weight
-        stored weight tensor: torch.Size([1024, 64, 3, 3])
-        Observer with info: stage2, fmb, conv_weight
-        stored weight tensor: torch.Size([128, 1024, 1, 1])
-        Observer with info: stage2, fmb, conv_weight
-        stored weight tensor: torch.Size([512, 128, 3, 3])
-        Observer with info: stage2, fmb, conv_weight
-        stored weight tensor: torch.Size([128, 512, 1, 1])'''
 
 
 class EfficientViTSamPredictor:

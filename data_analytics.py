@@ -5,8 +5,7 @@ import pickle
 import os
 import matplotlib.pyplot as plt
 from adjustText import adjust_text
-from configs.quant_backbones_zoo import REGISTERED_BACKBONE_DESCRIPTIONS
-from configs.quant_backbones_zoo import SIMPLE_REGISTERED_BACKBONE_DESCRIPTIONS
+from configs.quant_backbones_zoo import REGISTERED_BACKBONE_DESCRIPTIONS_LARGE, REGISTERED_BACKBONE_DESCRIPTIONS_XL
 
 
 def read_pickle_to_dataframe(file_path, file_name) -> pd.DataFrame:
@@ -19,329 +18,167 @@ def read_pickle_to_dataframe(file_path, file_name) -> pd.DataFrame:
         df = pd.DataFrame(data)
         return df, file_string
 
+''' Function that plots blockwise and layerwise benchmarking '''
+def plot(df, title: str, xlabel: str, name: str, model: str = 'L0', prompt_type: str = 'box', add_descriptions=True, rotate=False, zoom=False):
+    baselines_box = { # measured empirically
+                'L0':78.509,
+                'L1':78.835,
+                'L2':79.130,
+                'XL0':79.752,
+                'XL1':79.930,
+            }
+    
+    if model.startswith('X'):
+        description_dict = REGISTERED_BACKBONE_DESCRIPTIONS_XL
+    else:
+        description_dict = REGISTERED_BACKBONE_DESCRIPTIONS_LARGE
+
+    baseline_value=baselines_box[model]
+    zoom_lower_limit=77.1
+    zoom_upper_limit = baseline_value + 0.2
+    #if zoom:
+    #    zoom_upper_limit = 80
+    #else:
+    #    zoom_upper_limit = baseline_value + 0.2
+    texts = []
+    
+    if prompt_type == 'box' or prompt_type == 'point':
+        performance_measure = 'all'
+    elif performance_measure == 'point_and_box':
+        raise KeyError("plot function that can plot both point and box in one call not yet implemented")
+    
+    fig, ax = plt.subplots(figsize=(25,5))
+    if zoom:
+        # Create a color array that holds the color for each dot
+        colors = df[performance_measure].apply(lambda y: 'red' if y < zoom_lower_limit else 'blue')
+        # Create a new column 'adjusted_performance_measure' that holds the adjusted y-values
+        df['adjusted_performance_measure'] = df[performance_measure].apply(lambda y: zoom_lower_limit + 0.1 if y < zoom_lower_limit else y)
+        # Use scatter to draw dots with the adjusted y-values and colors
+        ax.scatter(df['backbone_version'], df['adjusted_performance_measure'], c=colors)
+    else:
+        ax.plot(df['backbone_version'], df[performance_measure])
+        ax.scatter(df['backbone_version'], df[performance_measure])
+
+
+    if add_descriptions:
+        # Add description to each data point where 'all' score is substantially lower than baseline
+        for i, val in df.iterrows(): # index and row data
+            if zoom:
+                if val[performance_measure] < baseline_value-0.15: # L2: 0.3
+                    # using adjustText library to avoid overlapping text
+                    texts.append(ax.text(val['backbone_version'], val['adjusted_performance_measure'] - 0.1, f"{description_dict[val['backbone_version']]}"))
+            else:
+                if val[performance_measure] < baseline_value-2:
+                    #ax.text(val['backbone_version'], val[performance_measure], f"{description_dict[val['backbone_version']]}")
+                    texts.append(ax.text(val['backbone_version'], val[performance_measure] - 0.1, f"{description_dict[val['backbone_version']]}"))
+        adjust_text(texts)  # adjust text to minimize overlaps
+
+        
+    # vertical lines at each x mark
+    for x in df['backbone_version']:
+        ax.axvline(x, color='lightgray', linestyle='dotted')
+    ax.axhline(baseline_value, color='red', linestyle='dotted')
+    #ax.text(0, baseline_value - 0.1 if zoom else baseline_value - 1, 'Baseline', va='top', ha="right")
+
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel('mIoU (higher is better)')
+    if rotate:
+        plt.xticks(rotation=70)
+    if zoom:
+        ax.set_ylim([zoom_lower_limit,zoom_upper_limit])
+        save_name = f'./plots/graphs/{name}_zoom.png'
+    else:
+        ax = plt.gca()  # get current axes
+        ymin, _ = ax.get_ylim()  # get the current lower limit
+        ax.set_ylim(ymin, zoom_upper_limit)  # set the new upper limit
+        save_name = f'./plots/graphs/{name}.png'
+
+    plt.suptitle(title)
+    plt.savefig(save_name, bbox_inches='tight')
+    plt.close()
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Read pickle file and convert it to pandas dataframe')
-    parser.add_argument('--pickle_file_path', type=str, default='results_storage', help='The directory of the pickle file')
-    parser.add_argument('--pickle_file_name', type=str, help='The name of the pickle file to analyse')
+    parser = argparse.ArgumentParser(description='From pickle file to plots')
+    parser.add_argument('--file_path', type=str, default='results_complete', help='The directory of the pickle file')
+    parser.add_argument('--file_name', type=str, help='The name of the pickle file to analyse')
+    parser.add_argument('--model', type=str, default='L0',  help='The model of the test, in capital letters')
     args = parser.parse_args()
 
     # load the data from storage
-    df, _ = read_pickle_to_dataframe(args.pickle_file_path, args.pickle_file_name)
+    df, _ = read_pickle_to_dataframe(args.file_path, args.file_name)
 
     pd.set_option('display.max_rows', None)
-
-    # Print data overview
-    selected_columns = ['backbone_version',
-                        'number of quantized params']
-    intersection_columns = [col for col in selected_columns if col in df.columns]
-    selected_data = df[intersection_columns]
-    # Format 'number of quantized params' with thousands separator
-    if 'number of quantized params' in selected_data.columns:
-        selected_data['number of quantized params'] = selected_data['number of quantized params'].apply(lambda x: '{:,}'.format(int(x)))
-
     print("data analytics script is working with the following data:")
     print(df.columns)
-    print(selected_data.to_string(index=False))
 
-    ################################
-    ###       Experiment 5       ###
-    ################################
-
-    ''' Function that plots blockwise and layerwise benchmarking '''
-    def plotE5(df, title: str, xlabel: str, name: str, layerwise=False, rotate=False, zoom=False):
-        baseline_value=78.509
-        zoom_lower_limit=77
-        zoom_upper_limit=79
-        texts = []
-
-        fig, ax = plt.subplots(figsize=(25,5))
-        if zoom:
-            # Create a color array that holds the color for each dot
-            colors = df['all'].apply(lambda y: 'red' if y < zoom_lower_limit else 'blue')
-            # Create a new column 'adjusted_all' that holds the adjusted y-values
-            df['adjusted_all'] = df['all'].apply(lambda y: zoom_lower_limit + 0.1 if y < zoom_lower_limit else y)
-            # Use scatter to draw dots with the adjusted y-values and colors
-            ax.scatter(df['backbone_version'], df['adjusted_all'], c=colors)
-        else:
-            ax.plot(df['backbone_version'], df['all'])
+    # Print data overview
+    # selected_columns = ['backbone_version', 'all'
+    #                    'number of quantized params']
+    #intersection_columns = [col for col in selected_columns if col in df.columns]
+    #selected_data = df[intersection_columns]
+    # Format 'number of quantized params' with thousands separator
+    #if 'number of quantized params' in selected_data.columns:
+    #    selected_data['number of quantized params'] = selected_data['number of quantized params'].apply(lambda x: '{:,}'.format(int(x)))
 
 
-        if layerwise:
-            # Add description to each data point where 'all' score is substantially lower than baseline
-            for i, val in df.iterrows(): # index and row data
-                if zoom:
-                    if val['all'] < baseline_value-0.1:
-                        # using adjustText library to avoid overlapping text
-                        texts.append(ax.text(val['backbone_version'], val['adjusted_all'], f"{SIMPLE_REGISTERED_BACKBONE_DESCRIPTIONS[val['backbone_version']]}"))
-                else:
-                    if val['all'] < baseline_value-0.5:
-                        ax.text(val['backbone_version'], val['all'] - 1, f"{SIMPLE_REGISTERED_BACKBONE_DESCRIPTIONS[val['backbone_version']]}")
-            if zoom:
-                adjust_text(texts)  # adjust text to minimize overlaps
+    #print(selected_data.to_string(index=False))
 
-            
-        # vertical lines at each x mark
-        for x in df['backbone_version']:
-            ax.axvline(x, color='lightgray', linestyle='dotted')
-        ax.axhline(baseline_value, color='red', linestyle='dotted')
-        ax.text(0, baseline_value - 0.1 if zoom else baseline_value - 1, 'Baseline', va='top', ha="right")
+    # needed if only running box experiment 
+    # df = df.rename(columns={'all': 'box_all'})
 
+    ################################################################
+    ###                      CONFIGURATION                       ###
+    ###   Experiment - simualted layer activation quantization   ###
+    ################################################################
 
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel('Ground truth box prompt "all" score (higher is better)')
-        if rotate:
-            plt.xticks(rotation=70)
-        if zoom:
-            ax.set_ylim([zoom_lower_limit,zoom_upper_limit])
+    # Config for plot's text:
+    # model = 'L0' # 'L1', 'L2', 'XL0', XL1'
+    model = args.model
+    quant_scheme = 'simulated integer-only (weights + activations)' # 'simulated weight-only'
+    prompt_type = 'box' #or 'point'
 
-        plt.suptitle(title)
-        plt.savefig(f'./plots/graphs/{name}.png', bbox_inches='tight')
-        plt.close()
+    ################################################################
+    ###                      CONFIGURATION                       ###
+    ###   Experiment - simualted layer activation quantization   ###
+    ################################################################
 
 
-    df_block = df.copy()
     df_layer = df.copy()
-
-    df_block['model'] = df_block['model'].str.replace('_quant', '')
-    df_block['model'] = df_block['model'].str.upper()
-    df_block['backbone_version'] = df_block['backbone_version'].str.replace('L0:', '')
-    df_block['backbone_version'] = df_block['backbone_version'].str.replace('stage', 'stage ')
-    df_block['backbone_version'] = df_block['backbone_version'].str.replace(':', '\nblock ', 1) # only first occurance
-    df_block['backbone_version'] = df_block['backbone_version'].str.replace(':', '\nlayer ')
 
     df_layer['model'] = df_layer['model'].str.replace('_quant', '')
     df_layer['model'] = df_layer['model'].str.upper()
-    df_layer['backbone_version'] = df_layer['backbone_version'].str.replace('L0:', '')
+
+    df_layer['backbone_version'] = df_layer['backbone_version'].str.replace(model + ':', '')
     df_layer['backbone_version'] = df_layer['backbone_version'].str.replace('stage', '')
 
     # split data: stage:block:x vs stage:block:layer
-    df_block = df_block[df_block['backbone_version'].str.endswith('x')] # remove layerwise experiments
-    df_layer = df_layer[~df_layer['backbone_version'].str.endswith('x')] # remove blockwise experiments
-
-    plotE5(df_block,
-           title='Block-wise analysis of weight quantization to INT8 of EfficientViT-SAM L0 image encoder',
-            xlabel='L0 base model with only one block quantized. All layers of the block are quantized',
-            name=f'{args.pickle_file_name}_block',
-            )
+    df_layer = df_layer[~df_layer['backbone_version'].str.endswith('x')] # remove blockwise experiments, if any
     
-    plotE5(df_layer,
-           title='Layer-wise analysis of weight quantization to INT8 of EfficientViT-SAM L0 image encoder',
-           xlabel='L0 base model with only one layer quantized. Naming scheme is stage:block:layer',
-           name=f'{args.pickle_file_name}_layer',
-            layerwise=True,
-           rotate=True,
-           )
+
+    # plot normal
+    plot(
+        df_layer,
+        title=f'Layer-wise accuracy degredation, {quant_scheme} quantization of {model}',
+        xlabel=f'{model} base model with only one layer quantized. Naming scheme is stage:block:layer',
+        name=f'{args.file_name}_layer',
+        model = model,
+        prompt_type=prompt_type,
+        add_descriptions=True,
+        rotate=True,
+        zoom=False,
+        )
     
-    plotE5(df_block,
-           title='Block-wise analysis of weight quantization to INT8 of EfficientViT-SAM L0 image encoder',
-            xlabel='L0 base model with only one block quantized. All layers of the block are quantized',
-            name=f'{args.pickle_file_name}_block_zoom',
-            zoom=True,
-            )
+    # plot zoomed
+    plot(
+        df_layer,
+        title=f'Layer-wise accuracy degredation, {quant_scheme} quantization of {model}',
+        xlabel=f'{model} base model with only one layer quantized. Naming scheme is stage:block:layer',
+        name=f'{args.file_name}_layer',
+        model = model,
+        prompt_type=prompt_type,
+        add_descriptions=True,
+        rotate=True,
+        zoom=True,
+        )
     
-    plotE5(df_layer,
-           title='Layer-wise analysis of weight quantization to INT8 of EfficientViT-SAM L0 image encoder',
-           xlabel='L0 base model with only one layer quantized. Naming scheme is stage:block:layer',
-           name=f'{args.pickle_file_name}_layer_zoom',
-           layerwise=True,
-           rotate=True,
-           zoom=True,
-           )
-
-    ################################
-    ###       Experiment 4       ###
-    ################################
-    '''
-    #Add negative noise to XL1 make sure all models are visible in plot
-    #mask = df['model'] == 'xl0_quant'
-    #df.loc[mask,'all'] -= np.random.uniform(0, 2, size=df[mask].shape[0])
-
-    # Rename models to remove _quant ending
-     
-    df['model'] = df['model'].str.replace('_quant', '')
-    df['model'] = df['model'].str.upper()
-
-    df = df[df['model'] != 'L2']
-    df = df[df['model'] != 'XL0']
-
-    # Group the dataframe by 'backbone_version'
-    grouped = df.groupby('backbone_version')
-    markers = ['o', 'v', '^', '<', '>', 's', 'p', '*', 'h', 'H', 'D', 'd', 'P', 'X']
-
-    for n in ("3","4","5", "6", "7", "8","9"):
-        fig, ax = plt.subplots()
-        #iterate over the groups
-        for i, (name, group) in enumerate(grouped):
-            if name.startswith(n):
-                # Plot performance against base model for each backbone
-                linestyle='dotted' if i % 2 == 0 else '--'
-                label=f"{name}\n(values: {' '.join([str(round(val, 1)) for val in group['all'].values])})"
-                ax.plot(group['model'], group['all'], label=label, linestyle=linestyle) # + np.random.uniform(0,0,len(group['all']))
-            elif 'baseline' in name:
-                color = 'red' if 'FP32' in name else 'black'
-                label=f"{name}\n(values: {' '.join([str(round(val, 1)) for val in group['all'].values])})"
-                ax.plot(group['model'], group['all'], label=label, linestyle='dotted', marker = 'x', color=color)
-
-        ax.set_xlabel('Base Model')
-        ax.set_ylabel('box prompt "all" score')
-        ax.set_ylim([0,85])
-        
-        ax.set_title(REGISTERED_BACKBONE_DESCRIPTIONS[str(n)])
-        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-
-        plt.suptitle(f'Experiment 4, backbone benchmarking, family {n}')
-        plt.savefig(f'./plots/E4_plot_family_{n}_L2_XL0_removed.png', bbox_inches='tight')
-        plt.close() 
-
-
-    # MODEL SIZE PLOT
-    df = df[df['model'] != 'L1']
-    grouped = df.groupby('backbone_version')
-
-    for n in ("3","4","5", "6", "7", "8","9"):
-        fig, ax = plt.subplots()
-        #iterate over the groups
-        for i, (name, group) in enumerate(grouped):
-            if name.startswith(n):
-                # Plot performance against base model for each backbone
-                linestyle='dotted'
-                label=f"{name}\n(values: {' '.join([str(round(val, 1)) for val in group['all'].values])})"
-                ax.plot(group['model_size_mb_quantized'], group['all'], label=label, linestyle=linestyle, marker = 'o') # + np.random.uniform(0,0,len(group['all']))
-            elif 'baseline' in name:
-                color = 'red' if 'FP32' in name else 'black'
-                label=f"{name}\n(values: {' '.join([str(round(val, 1)) for val in group['all'].values])})"
-                ax.plot(group['model_size_mb_quantized'], group['all'], label=label, linestyle='-.', marker = 'x', color=color)
-
-        ax.set_xlabel('theorethical model size in megabytes (lower is better)\n Left datapoint is LO as base model, right datapoint is XL0')
-        ax.set_ylabel('box prompt "all" score (higher is better)')
-        ax.set_ylim([40,85])
-        
-        ax.set_title(REGISTERED_BACKBONE_DESCRIPTIONS[str(n)])
-        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-
-        plt.suptitle(f'Family {n}, L0 and XL1 only')
-        plt.subplots_adjust(top=0.85)
-        plt.savefig(f'./plots/E4_sizeplot_family_{n}.png', bbox_inches='tight')
-        plt.close() 
-
-    '''
-
-    # Get metadata for the textbox
-    '''
-    first_row = df.iloc[0]
-    meta_columns = [col for col in df.columns if col not in selected_columns]     
-    info_dict = {col: first_row[col] for col in meta_columns}
-    info_str = '\n'.join(f'{k}: {v}' for k, v in info_dict.items())
-    # ax.text(0.5, 0.5, info_str, transform=ax.transAxes, fontsize=10, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
-
-    '''
-
-    # Apend the baselines for plotting - will need to extract them later.
-    '''new_data = [
-        {'model': 'l0_quant', 'backbone_version': 'FP32 baseline', 'all': 78.509},
-        {'model': 'l1_quant', 'backbone_version': 'FP32 baseline', 'all': 78.835},
-        {'model': 'l2_quant', 'backbone_version': 'FP32 baseline', 'all': 79.13},
-        {'model': 'xl0_quant', 'backbone_version': 'FP32 baseline', 'all': 79.752},
-        {'model': 'xl1_quant', 'backbone_version': 'FP32 baseline', 'all': 79.93},
-        {'model': 'l0_quant', 'backbone_version': 'INT8 baseline', 'all': 50.879099},
-        {'model': 'l1_quant', 'backbone_version': 'INT8 baseline', 'all': 49.978849},
-        {'model': 'l2_quant', 'backbone_version': 'INT8 baseline', 'all': 24.187811},
-        {'model': 'xl0_quant', 'backbone_version': 'INT8 baseline', 'all': 50.059622},
-        {'model': 'xl1_quant', 'backbone_version': 'INT8 baseline', 'all': 73.630043}
-    ]
-    new_data_df = pd.DataFrame(new_data)
-    df = pd.concat([df, new_data_df], ignore_index=True)
-'''
-
-    base_model_sizes = {
-        'L0': {'Total params': 30728224, 'Total mult-adds (G)': 104.45},
-        'L1': {'Total params': 43585568, 'Total mult-adds (G)': 128.74},
-        'L2': {'Total params': 57264032, 'Total mult-adds (G)': 174.16},
-        'XL0': {'Total params': 112893344, 'Total mult-adds (G)': 182.95},
-        'XL1': {'Total params': 199281568, 'Total mult-adds (G)': 318.81}
-        }
-
-
-    model_params_per_stage = {
-        'L0': {
-            'Total params': 30728224,
-            'Total mult-adds (G)': 104.45,
-            'stage0': 19488,
-            'stage1': 345856,
-            'stage2': 1379840,
-            'stage3': 2953728,
-            'stage4': 23106560,
-            'stage5': 0,
-            'stage0_bottleneck': 928,
-            'stage1_bottleneck': 181376,
-            'stage2_bottleneck': 723200,
-            'stage3_bottleneck': 809472,
-            'stage4_bottleneck': 4787200,
-            'stage5_bottleneck': 0,
-        },
-        'L1': {
-            'Total params': 43585568, 
-            'Total mult-adds (G)': 128.74,
-            'stage0': 19488,
-            'stage1': 345856,
-            'stage2': 1379840,
-            'stage3': 4025856,
-            'stage4': 32266240,
-            'stage5': 0,
-            'stage0_bottleneck': 928,
-            'stage1_bottleneck': 181376,
-            'stage2_bottleneck': 723200,
-            'stage3_bottleneck': 809472,
-            'stage4_bottleneck': 4787200,
-            'stage5_bottleneck': 0,
-        },
-        'L2': {
-            'Total params': 57264032, 
-            'Total mult-adds (G)': 174.16,
-            'stage0': 19488,
-            'stage1': 510336,
-            'stage2': 2036480,
-            'stage3': 5097984,
-            'stage4': 41425920,
-            'stage5': 0,
-            'stage0_bottleneck': 928,
-            'stage1_bottleneck': 181376,
-            'stage2_bottleneck': 723200,
-            'stage3_bottleneck': 809472,
-            'stage4_bottleneck': 4787200,
-            'stage5_bottleneck': 0,
-        },
-        'XL0': {
-            'Total params': 112893344, 
-            'Total mult-adds (G)': 182.95,
-            'stage0': 928,
-            'stage1': 345856,
-            'stage2': 1379840,
-            'stage3': 8136192,
-            'stage4': 13678080,
-            'stage5': 73081856,
-            'stage0_bottleneck': 928,
-            'stage1_bottleneck': 181376,
-            'stage2_bottleneck': 723200,
-            'stage3_bottleneck': 2888192,
-            'stage4_bottleneck': 3191808,
-            'stage5_bottleneck': 19011584,
-        },
-        'XL1': {
-            'Total params': 199281568, 
-            'Total mult-adds (G)': 318.81,
-            'stage0': 19488,
-            'stage1': 510336,
-            'stage2': 2036480,
-            'stage3': 13384192,
-            'stage4': 24164352,
-            'stage5': 127152128,
-            'stage0_bottleneck': 928,
-            'stage1_bottleneck': 181376,
-            'stage2_bottleneck': 723200,
-            'stage3_bottleneck': 2888192,
-            'stage4_bottleneck': 3191808,
-            'stage5_bottleneck': 19011584,
-        }
-    }
-
