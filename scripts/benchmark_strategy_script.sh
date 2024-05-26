@@ -11,8 +11,8 @@ export OMP_NUM_THREADS=$((nb_cpu_threads / nproc_per_node))
 # Note: Time to execute was the same if this was =1 or =32
 
 backbones=(
-any:all:all:all
 any:all_but_neck:all:all
+any:all:all:all
 )
 # the protection of MBConvs is hardcoded into the ops.py definitions
 # WAAAAARNING THE FLAGS ARE SET TO TRUE as they should be in this case
@@ -30,7 +30,7 @@ xl0_quant
 xl1_quant
 )
 
-echo "--------- Benchmarking script on COCO, box ---------}"
+echo "--------- Benchmarking script on COCO, only Full MBCONV protected ---------}"
 
 for backbone_item in "${backbones[@]}"
 do
