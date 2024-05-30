@@ -48,16 +48,8 @@ def plot(df, title: str, xlabel: str, name: str, model: str = 'L0', prompt_type:
         raise KeyError("plot function that can plot both point and box in one call not yet implemented")
     
     fig, ax = plt.subplots(figsize=(25,5))
-    if zoom:
-        # Create a color array that holds the color for each dot
-        colors = df[performance_measure].apply(lambda y: 'red' if y < zoom_lower_limit else 'blue')
-        # Create a new column 'adjusted_performance_measure' that holds the adjusted y-values
-        df['adjusted_performance_measure'] = df[performance_measure].apply(lambda y: zoom_lower_limit + 0.1 if y < zoom_lower_limit else y)
-        # Use scatter to draw dots with the adjusted y-values and colors
-        ax.scatter(df['backbone_version'], df['adjusted_performance_measure'], c=colors)
-    else:
-        ax.plot(df['backbone_version'], df[performance_measure])
-        ax.scatter(df['backbone_version'], df[performance_measure])
+    ax.plot(df['backbone_version'], df[performance_measure])
+    ax.scatter(df['backbone_version'], df[performance_measure])
 
 
     if add_descriptions:
@@ -111,21 +103,6 @@ if __name__ == "__main__":
     pd.set_option('display.max_rows', None)
     print("data analytics script is working with the following data:")
     print(df.columns)
-
-    # Print data overview
-    # selected_columns = ['backbone_version', 'all'
-    #                    'number of quantized params']
-    #intersection_columns = [col for col in selected_columns if col in df.columns]
-    #selected_data = df[intersection_columns]
-    # Format 'number of quantized params' with thousands separator
-    #if 'number of quantized params' in selected_data.columns:
-    #    selected_data['number of quantized params'] = selected_data['number of quantized params'].apply(lambda x: '{:,}'.format(int(x)))
-
-
-    #print(selected_data.to_string(index=False))
-
-    # needed if only running box experiment 
-    # df = df.rename(columns={'all': 'box_all'})
 
     ################################################################
     ###                      CONFIGURATION                       ###

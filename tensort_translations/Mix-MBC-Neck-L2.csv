@@ -1,0 +1,12 @@
+"stages"
+/image_encoder/backbone/stages.3/
+/image_encoder/backbone/stages.4/op_list.0/local_module
+/image_encoder/backbone/stages.4/op_list.1/local_module
+/image_encoder/backbone/stages.4/op_list.2/local_module
+/image_encoder/backbone/stages.4/op_list.3/local_module
+/image_encoder/backbone/stages.4/op_list.4/local_module
+/image_encoder/backbone/stages.4/op_list.5/local_module
+/image_encoder/backbone/stages.4/op_list.6/local_module
+/image_encoder/backbone/stages.4/op_list.7/local_module
+/image_encoder/backbone/stages.4/op_list.8/local_module   
+/image_encoder/neck/

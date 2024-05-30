@@ -303,39 +303,115 @@ L2:neck:15:0
 )
 
 
+backbones_XL0=(
+XL0:stage0:0:0
+XL0:stage1:0:0
+XL0:stage1:0:1
+XL0:stage1:1:0
+XL0:stage1:1:1
+XL0:stage2:0:0
+XL0:stage2:0:1
+XL0:stage2:1:0
+XL0:stage2:1:1
+XL0:stage3:0:0
+XL0:stage3:0:1
+XL0:stage3:1:0
+XL0:stage3:1:1
+XL0:stage3:2:0
+XL0:stage3:2:1
+XL0:stage4:0:0
+XL0:stage4:0:1
+XL0:stage4:0:2
+XL0:stage4:1:0
+XL0:stage4:1:1
+XL0:stage4:1:2
+XL0:stage4:1:3
+XL0:stage4:1:4
+XL0:stage4:1:5
+XL0:stage4:2:0
+XL0:stage4:2:1
+XL0:stage4:2:2
+XL0:stage4:2:3
+XL0:stage4:2:4
+XL0:stage4:2:5
+XL0:stage4:3:0
+XL0:stage4:3:1
+XL0:stage4:3:2
+XL0:stage4:3:3
+XL0:stage4:3:4
+XL0:stage4:3:5
+XL0:stage5:0:0
+XL0:stage5:0:1
+XL0:stage5:0:2
+XL0:stage5:1:0
+XL0:stage5:1:1
+XL0:stage5:1:2
+XL0:stage5:1:3
+XL0:stage5:1:4
+XL0:stage5:1:5
+XL0:stage5:2:0
+XL0:stage5:2:1
+XL0:stage5:2:2
+XL0:stage5:2:3
+XL0:stage5:2:4
+XL0:stage5:2:5
+XL0:stage5:3:0
+XL0:stage5:3:1
+XL0:stage5:3:2
+XL0:stage5:3:3
+XL0:stage5:3:4
+XL0:stage5:3:5
+XL0:neck:0:0
+XL0:neck:1:0
+XL0:neck:2:0
+XL0:neck:3:0
+XL0:neck:3:1
+XL0:neck:4:0
+XL0:neck:4:1
+XL0:neck:5:0
+XL0:neck:5:1
+XL0:neck:6:0
+XL0:neck:6:1
+XL0:neck:7:0
+XL0:neck:7:1
+XL0:neck:8:0
+XL0:neck:8:1
+XL0:neck:9:0
+)
+
 backbones_XL1=(
-#XL1:stage0:0:0
-#XL1:stage0:1:0
-#XL1:stage0:1:1
-#XL1:stage1:0:0
-#XL1:stage1:0:1
-#XL1:stage1:1:0
-#XL1:stage1:1:1
-#XL1:stage1:2:0
-#XL1:stage1:2:1
-#XL1:stage1:3:0
-#XL1:stage1:3:1
-#XL1:stage1:4:0
-#XL1:stage1:4:1
-#XL1:stage2:0:0
-#XL1:stage2:0:1
-#XL1:stage2:1:0
-#XL1:stage2:1:1
-#XL1:stage2:2:0
-#XL1:stage2:2:1
-#XL1:stage2:3:0
-#XL1:stage2:3:1
-#XL1:stage2:4:0
-#XL1:stage2:4:1
-#XL1:stage3:0:0
-#XL1:stage3:0:1
-#XL1:stage3:1:0
-#XL1:stage3:1:1
-#XL1:stage3:2:0
-#XL1:stage3:2:1
-#XL1:stage3:3:0
-#XL1:stage3:3:1
-#XL1:stage3:4:0
+XL1:stage0:0:0
+XL1:stage0:1:0
+XL1:stage0:1:1
+XL1:stage1:0:0
+XL1:stage1:0:1
+XL1:stage1:1:0
+XL1:stage1:1:1
+XL1:stage1:2:0
+XL1:stage1:2:1
+XL1:stage1:3:0
+XL1:stage1:3:1
+XL1:stage1:4:0
+XL1:stage1:4:1
+XL1:stage2:0:0
+XL1:stage2:0:1
+XL1:stage2:1:0
+XL1:stage2:1:1
+XL1:stage2:2:0
+XL1:stage2:2:1
+XL1:stage2:3:0
+XL1:stage2:3:1
+XL1:stage2:4:0
+XL1:stage2:4:1
+XL1:stage3:0:0
+XL1:stage3:0:1
+XL1:stage3:1:0
+XL1:stage3:1:1
+XL1:stage3:2:0
+XL1:stage3:2:1
+XL1:stage3:3:0
+XL1:stage3:3:1
+XL1:stage3:4:0
 XL1:stage3:4:1
 XL1:stage4:0:0
 XL1:stage4:0:1
@@ -514,38 +590,37 @@ models=(
 #done
  
 
-# 
-# echo "--------- STARTING SCRIPT L1 ---------}"
-# model=l1_quant
-# for backbone_item in "${backbones_L1[@]}"
-# do
-#   echo " "
-#   echo "Model $model, backbone_version: $backbone_item" §
-#   # Run the evaluation command for the current model - with --quantize and configurations
-#   torchrun --nproc_per_node=2 \
-#   eval_sam_model_joel.py \
-#   --dataset coco \
-#   --image_root coco/val2017 \
-#   --dataset_calibration sa-1b \
-#   --image_root_calibration sa-1b \
-#   --annotation_json_file coco/annotations/instances_val2017.json \
-#   --model $model \
-#   --limit_iterations 2500 \
-#   --prompt_type box \
-#   --backbone_version $backbone_item \
-#   --quantize_W \
-#   --quantize_A \
-#   --export_dataframe \
-#   --script_name $model
-#   # --limit_iterations 10 \
-#   # --export_dataframe \
-#   # --print_progress \
-#   # --plot_distributions \
-#   # --quantize_method_W $qmw \
-#   # --quantize_A \
-#   # --print_torchinfo \
-# done
-#
+
+echo "--------- STARTING SCRIPT L1 ---------}"
+model=l1_quant
+for backbone_item in "${backbones_L1[@]}"
+do
+  echo " "
+  echo "Model $model, backbone_version: $backbone_item" §
+  # Run the evaluation command for the current model - with --quantize and configurations
+  torchrun --nproc_per_node=2 \
+  eval_sam_model_joel.py \
+  --dataset coco \
+  --image_root coco/val2017 \
+  --dataset_calibration sa-1b \
+  --image_root_calibration sa-1b \
+  --annotation_json_file coco/annotations/instances_val2017.json \
+  --model $model \
+  --limit_iterations 2250 \
+  --prompt_type box \
+  --backbone_version $backbone_item \
+  --quantize_W \
+  --quantize_A \
+  --export_dataframe \
+  --script_name $model
+  # --limit_iterations 10 \
+  # --export_dataframe \
+  # --print_progress \
+  # --plot_distributions \
+  # --quantize_method_W $qmw \
+  # --quantize_A \
+  # --print_torchinfo \
+done
 
 
 #echo "--------- STARTING SCRIPT L2 ---------}"
@@ -579,7 +654,36 @@ models=(
   # --print_torchinfo \
 #done
 
-
+echo "--------- STARTING SCRIPT XL0 ---------}"
+model=xl0_quant
+for backbone_item in "${backbones_XL0[@]}"
+do
+  echo " "
+  echo "Model $model, backbone_version: $backbone_item" §
+  # Run the evaluation command for the current model - with --quantize and configurations
+  torchrun --nproc_per_node=2 \
+  eval_sam_model_joel.py \
+  --dataset coco \
+  --image_root coco/val2017 \
+  --dataset_calibration sa-1b \
+  --image_root_calibration sa-1b \
+  --annotation_json_file coco/annotations/instances_val2017.json \
+  --model $model \
+  --limit_iterations 2250 \
+  --prompt_type box \
+  --backbone_version $backbone_item \
+  --quantize_W \
+  --quantize_A \
+  --export_dataframe \
+  --script_name $model
+  # --limit_iterations 10 \
+  # --export_dataframe \
+  # --print_progress \
+  # --plot_distributions \
+  # --quantize_method_W $qmw \
+  # --quantize_A \
+  # --print_torchinfo \
+done
 
 echo "--------- STARTING SCRIPT XL1 ---------}"
 model=xl1_quant
