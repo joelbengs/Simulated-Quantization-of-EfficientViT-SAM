@@ -1156,9 +1156,9 @@ class QMBConv(nn.Module):
         #       note that they will not show up in printouts, since printouts iterate over instances of QConvLayer  #
         #############################################################################################################
 
-        protect_sensitive_input_conv_to_FP32 = False
-        protect_sensitive_depthwise_conv_to_FP32 = False
-        protect_sensitive_pointwise_conv_to_FP32 = False
+        protect_sensitive_input_conv_to_FP32 = True
+        protect_sensitive_depthwise_conv_to_FP32 = True
+        protect_sensitive_pointwise_conv_to_FP32 = True
         
         if protect_sensitive_input_conv_to_FP32:
             self.inverted_conv = ConvLayer(
