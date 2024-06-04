@@ -12,13 +12,13 @@ export OMP_NUM_THREADS=$((nb_cpu_threads / nproc_per_node))
 
 backbones=(
 #any:all:all:all
-any:all_but_neck:all:all toggles!
+any:all_but_neck:all:all
 )
 # the protection of MBConvs is hardcoded into the ops.py definitions
 # WAAAAARNING THE FLAGS ARE SET TO TRUE as they should be in this case
 
 prompts=(
-box
+#box
 box_from_detector
 )
 
@@ -89,7 +89,7 @@ do
             --image_root_calibration sa-1b \
             --annotation_json_file coco/annotations/lvis_v1_val.json \
             --source_json_file coco/source_json_file/lvis_vitdet.json \
-            --limit_iterations 4500 \
+            --limit_iterations 20\
             --model $model \
             --prompt_type $prompt \
             --backbone_version $backbone_item \
@@ -106,7 +106,7 @@ do
             # --observer_method_W $obsmethod \
             # --observer_method_A $obsmethod \
             # --print_torchinfo \
-            echo "$prompt COCO: $model, $backbone_item" §
+            echo "$prompt LVIS: $model, $backbone_item" §
         done
     done
 done

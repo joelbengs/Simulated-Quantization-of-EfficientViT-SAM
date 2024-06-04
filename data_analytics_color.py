@@ -4,9 +4,9 @@ import numpy as np
 import pickle
 import os
 import matplotlib.pyplot as plt
-from adjustText import adjust_text
-from configs.quant_backbones_zoo import REGISTERED_BACKBONE_DESCRIPTIONS_LARGE, REGISTERED_BACKBONE_DESCRIPTIONS_XL
-
+from configs.quant_backbones_zoo import REGISTERED_BACKBONE_DESCRIPTIONS_LARGE, REGISTERED_BACKBONE_DESCRIPTIONS_XL, REGISTERED_BACKBONE_COLORS
+import matplotlib.patches as mpatches
+import matplotlib.lines as mlines
 
 def read_pickle_to_dataframe(file_path, file_name) -> pd.DataFrame:
         file_name = os.path.basename(file_name)
@@ -32,63 +32,67 @@ def plot(df, title: str, xlabel: str, name: str, model: str = 'L0', prompt_type:
         description_dict = REGISTERED_BACKBONE_DESCRIPTIONS_XL
     else:
         description_dict = REGISTERED_BACKBONE_DESCRIPTIONS_LARGE
-
+    performance_measure = 'all'
     baseline_value=baselines_box[model]
-    zoom_lower_limit=77.1
+    upper_limit=85
+    zoom_lower_limit=76.9
     zoom_upper_limit = baseline_value + 0.2
-    #if zoom:
-    #    zoom_upper_limit = 80
-    #else:
-    #    zoom_upper_limit = baseline_value + 0.2
-    texts = []
-    
-    if prompt_type == 'box' or prompt_type == 'point':
-        performance_measure = 'all'
-    elif performance_measure == 'point_and_box':
-        raise KeyError("plot function that can plot both point and box in one call not yet implemented")
-    
-    fig, ax = plt.subplots(figsize=(25,5))
-    ax.plot(df['backbone_version'], df[performance_measure])
-    ax.scatter(df['backbone_version'], df[performance_measure])
+    fig, ax = plt.subplots(figsize=(25,4))
 
+    ax.plot(df['backbone_version'], df[performance_measure], color='slategrey')
 
-    if add_descriptions:
-        # Add description to each data point where 'all' score is substantially lower than baseline
-        for i, val in df.iterrows(): # index and row data
-            if zoom:
-                if val[performance_measure] < baseline_value-0.4: # L2: 0.3
-                    # using adjustText library to avoid overlapping text
-                    texts.append(ax.text(val['backbone_version'], val['adjusted_performance_measure'] - 0.1, f"{description_dict[val['backbone_version']]}"))
-            else:
-                if val[performance_measure] < baseline_value-4:
-                    #ax.text(val['backbone_version'], val[performance_measure], f"{description_dict[val['backbone_version']]}")
-                    texts.append(ax.text(val['backbone_version'], val[performance_measure] - 0.1, f"{description_dict[val['backbone_version']]}"))
-        adjust_text(texts)  # adjust text to minimize overlaps
+    for i, val in df.iterrows(): # index and row data
+        ax.scatter(
+                    val['backbone_version'], 
+                    val[performance_measure],
+                    color=REGISTERED_BACKBONE_COLORS.get(description_dict[val['backbone_version']], 'grey'),
+                    s=100)
+        # vertical lines at each x mark
+        ax.axvline(val['backbone_version'], color='lightgray', linestyle='dotted')
 
-        
-    # vertical lines at each x mark
-    for x in df['backbone_version']:
-        ax.axvline(x, color='lightgray', linestyle='dotted')
-    ax.axhline(baseline_value, color='red', linestyle='dotted')
-    #ax.text(0, baseline_value - 0.1 if zoom else baseline_value - 1, 'Baseline', va='top', ha="right")
+    ax.axhline(baseline_value, color='black', linestyle='dotted')
+    ax.axhline(zoom_lower_limit + 0.1, color='darkgreen', linestyle='dashdot')
 
-    if zoom: ax.set_xlabel(xlabel)
-    if not zoom: plt.suptitle(title)
-    ax.set_ylabel('mIoU (higher is better)')
+    if not zoom:
+        color_dict = {
+            'Attention' : 'darkturquoise',
+            'MBC' : 'orangered',
+            'Fused-MBC' : 'limegreen',
+            'ResBlock': 'fuchsia',
+            'Other': 'grey',
+        }
+
+        # Create a Line2D object for the black dotted line
+        baseline_line = mlines.Line2D([], [], color='black', linestyle='dotted', label='Baseline')
+        zoom_line = mlines.Line2D([], [], color='darkgreen', linestyle='dashdot', label='Zoom guideline')
+        legend_handles = [mpatches.Patch(color=color, label=label) for label, color in color_dict.items()]
+        legend_handles.append(baseline_line)
+        legend_handles.append(zoom_line)
+        ax.legend(handles=legend_handles, loc='lower right', fontsize=14)
+
+    if zoom: ax.set_xlabel(xlabel, fontsize=14)
+    if not zoom:
+        plt.suptitle(title, fontsize=14)
+
+    ax.tick_params(axis='x', labelsize=10) # to control size of x-ticks
+    ax.set_ylabel('mIoU (higher is better)', fontsize=14)
     if rotate:
-        plt.xticks(rotation=70)
+        plt.xticks(rotation=90)
     if zoom:
         ax.set_ylim([zoom_lower_limit,zoom_upper_limit])
-        save_name = f'./plots/graphs/{name}_zoom.png'
+        save_name = f'./plots/graphs/{name}_color_zoom.png'
     else:
         ax = plt.gca()  # get current axes
         ymin, _ = ax.get_ylim()  # get the current lower limit
-        ax.set_ylim(ymin, zoom_upper_limit)  # set the new upper limit
-        save_name = f'./plots/graphs/{name}.png'
+        ax.set_ylim(ymin, upper_limit)  # set the new upper limit
+        save_name = f'./plots/graphs/{name}_color.png'
+    
+    # get rid of the whitespace on either side
+    sorted_versions = sorted(df['backbone_version'])
+    ax.set_xlim(sorted_versions[0], sorted_versions[-1])
 
     plt.savefig(save_name, bbox_inches='tight')
     plt.close()
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='From pickle file to plots')
@@ -136,8 +140,8 @@ if __name__ == "__main__":
     # plot normal
     plot(
         df_layer,
-        title=f'Layer-wise accuracy degredation, {quant_scheme} quantization of {model}',
-        xlabel=f'{model} base model with only one layer quantized. Naming scheme is stage:block:layer',
+        title=f'Layer-wise sensitivity of {model}',
+        xlabel=f'EfficientViT-SAM-{model}\'s image encoder with only one layer quantized using simulated quantization. Naming scheme is stage:block:layer.',
         name=f'{args.file_name}_layer',
         model = model,
         prompt_type=prompt_type,
@@ -149,8 +153,8 @@ if __name__ == "__main__":
     # plot zoomed
     plot(
         df_layer,
-        title=f'Layer-wise accuracy degredation, {quant_scheme} quantization of {model}',
-        xlabel=f'{model} base model with only one layer quantized. Naming scheme is stage:block:layer',
+        title=f'Layer-wise sensitivity of {model}',
+        xlabel=f'EfficientViT-SAM-{model}\'s image encoder with only one layer quantized using simulated quantization. Naming scheme is stage:block:layer.',
         name=f'{args.file_name}_layer',
         model = model,
         prompt_type=prompt_type,
