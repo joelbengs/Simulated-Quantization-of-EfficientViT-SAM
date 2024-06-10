@@ -697,8 +697,6 @@ class QConvLayer(nn.Module):
                 self.config.CALIBRATION_MODE_N,
                 )
 
-
-
         # observer for activations
         if self.act is not None:
             self.act_observer, self.act_quantizer = self.build_observer_and_quantizer(
@@ -718,7 +716,6 @@ class QConvLayer(nn.Module):
             self.config.CALIBRATION_MODE_A,
             )
         
-                
         # to quantize incoming activations, in case the previous layer has protected under mixed-precision.
         self.matmul_observer, self.matmul_quantizer = self.build_observer_and_quantizer(
             'act',
@@ -801,18 +798,7 @@ class QConvLayer(nn.Module):
 
         # normalization and its quantizer
         if self.norm:
-           # if self.quant_weights:
-           #     # Extract the parameters of batchnorm2D
-           #     weight = self.norm.weight.data
-           #     bias = self.norm.bias.data
-           #     running_mean = self.norm.running_mean
-           #     running_var = self.norm.running_var
-           #     # Apply batch normalization with quantized weights
-           #     x = F.batch_norm(x, running_mean, running_var, weight, bias, self.norm.training, self.norm.momentum, self.norm.eps)
-
             x = self.norm(x)
-            #weights = self.norm.weight.data
-            #print("weights:", weights)
 
             if self.monitor_distributions:
                 self.norm_observer.store_tensor(x.clone()) # to freely move it between devices in analysis
@@ -1163,22 +1149,39 @@ class QMBConv(nn.Module):
         else:
             layer_positions = [0,1,2]
 
-        self.inverted_conv = QConvLayer(
-            in_channels,
-            mid_channels,
-            1,
-            stride=1,
-            norm=norm[0],
-            act_func=act_func[0],
-            use_bias=use_bias[0],
-            layer_position=layer_positions[0],
-            **kwargs, # config arguments
-        )
 
-        # layer-wise analysis showed these layers to be sensitive to quantization.
-        # Toggle her to experiment with them protected
-        # note that they will not show up in printouts, since printouts iterate over instances of QConvLayer
-        protect_sensitive_depthwise_conv_to_FP32 = True
+        #############################################################################################################
+        #       layer-wise analysis showed these layers to be sensitive to quantization.                            #
+        #       Toggle her to experiment with them protected                                                        #
+        #       note that they will not show up in printouts, since printouts iterate over instances of QConvLayer  #
+        #############################################################################################################
+
+        protect_sensitive_input_conv_to_FP32 = False
+        protect_sensitive_depthwise_conv_to_FP32 = False
+        protect_sensitive_pointwise_conv_to_FP32 = False
+        
+        if protect_sensitive_input_conv_to_FP32:
+            self.inverted_conv = ConvLayer(
+                in_channels,
+                mid_channels,
+                1,
+                stride=1,
+                norm=norm[0],
+                act_func=act_func[0],
+                use_bias=use_bias[0],
+            )
+        else:
+            self.inverted_conv = QConvLayer(
+                in_channels,
+                mid_channels,
+                1,
+                stride=1,
+                norm=norm[0],
+                act_func=act_func[0],
+                use_bias=use_bias[0],
+                layer_position=layer_positions[0],
+                **kwargs, # config arguments
+            )
         if protect_sensitive_depthwise_conv_to_FP32:
                 self.depth_conv = ConvLayer(
                 mid_channels,
@@ -1203,9 +1206,6 @@ class QMBConv(nn.Module):
                 layer_position=layer_positions[1],
                 **kwargs, # config arguments
             )
-
-        # this layer was also found to be sensitive
-        protect_sensitive_pointwise_conv_to_FP32 = True
         if protect_sensitive_pointwise_conv_to_FP32:
             self.point_conv = ConvLayer(
                 mid_channels,

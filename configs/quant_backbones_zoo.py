@@ -1,5 +1,5 @@
 # Backbone architectures for quantization experimentation
-#for key in REGISTERED_BACKBONE_VERSIONS.keys(): print(key)
+# for key in REGISTERED_BACKBONE_VERSIONS.keys(): print(key)
 
 
 '''
@@ -153,11 +153,33 @@ def create_backbone_versions(baseline_dict: dict):
 
 REGISTERED_BACKBONE_VERSIONS = create_backbone_versions(create_custom_backbones(create_backbone_baselines()))
 
+REGISTERED_BACKBONE_COLORS = {
+    'Other': 'grey',
+    'Conv 1x1,' : 'grey',
+    'Conv + upsample from 512' : 'grey',
+    'Conv + upsample from 256' : 'grey',
+    'Conv + upsample from 128' : 'grey',
+    #
+    'ResBlock': 'fuchsia',
+    #
+    'FMBC 3x3' : 'limegreen',
+    'FMBC 1x1' : 'limegreen',
+    'FMBC 3x3 OR Conv 1x1' : 'limegreen',
+    #
+    'MBC 1x1 exp' : 'orangered',
+    'MBC DW' : 'orangered',
+    'MBC 1x1 comp' : 'orangered',
+    #
+    'QKV' : 'darkturquoise',
+    'Attention' : 'darkturquoise',
+    'Proj' : 'darkturquoise',
+}
+
 REGISTERED_BACKBONE_DESCRIPTIONS_LARGE = {
     # Stage 0 - common to all large models
     '0:0:0': 'Conv',
     '0:1:0': 'ResBlock',
-    '0:1:1': 'Resblock',
+    '0:1:1': 'ResBlock',
     
     # Stage 1 - common to all large models
     '1:0:0': 'FMBC 3x3',
@@ -270,10 +292,10 @@ REGISTERED_BACKBONE_DESCRIPTIONS_LARGE = {
     'neck:5:0': 'FMBC 3x3',
     'neck:5:1': 'FMBC 1x1',
     'neck:6:0': 'FMBC 3x3',
-    'neck:6:1': 'FMBC 1x1',
+    'neck:6:1': 'FMBC 1x1 output',
 
     # L2
-    'neck:7:0': 'FMBC 3x3 OR Conv 1x1 in L0',
+    'neck:7:0': 'FMBC 3x3 OR Conv 1x1',
     'neck:7:1': 'FMBC 1x1',
     'neck:8:0': 'FMBC 3x3',
     'neck:8:1': 'FMBC 1x1',
@@ -283,7 +305,7 @@ REGISTERED_BACKBONE_DESCRIPTIONS_LARGE = {
     'neck:10:1': 'FMBC 1x1',
 
     # L3 
-    'neck:11:0': 'FMBC 3x3  OR Conv 1x1 in L1',
+    'neck:11:0': 'FMBC 3x3 OR Conv 1x1',
     'neck:11:1': 'FMBC 1x1',
     'neck:12:0': 'FMBC 3x3',
     'neck:12:1': 'FMBC 1x1',
@@ -292,7 +314,7 @@ REGISTERED_BACKBONE_DESCRIPTIONS_LARGE = {
     'neck:14:0': 'FMBC 3x3',
     'neck:14:1': 'FMBC 1x1',
     # common last layer
-    'neck:15:0': 'Conv 1x1,',
+    'neck:15:0': 'Conv 1x1',
     }
 
 REGISTERED_BACKBONE_DESCRIPTIONS_XL = {
@@ -300,7 +322,7 @@ REGISTERED_BACKBONE_DESCRIPTIONS_XL = {
     '0:0:0': 'Conv',
     # XL1
     '0:1:0': 'ResBlock',
-    '0:1:1': 'Resblock',
+    '0:1:1': 'ResBlock',
     
     # Stage 1
     '1:0:0': 'FMBC 3x3',
@@ -424,10 +446,10 @@ REGISTERED_BACKBONE_DESCRIPTIONS_XL = {
     'neck:5:0': 'FMBC 3x3',
     'neck:5:1': 'FMBC 1x1',
     'neck:6:0': 'FMBC 3x3',
-    'neck:6:1': 'FMBC 1x1',
+    'neck:6:1': 'FMBC 1x1 output',
 
     # XL1 has six extra FMBC
-    'neck:7:0': 'FMBC 3x3 OR Conv 1x1 in XL0',
+    'neck:7:0': 'FMBC 3x3 OR Conv 1x1',
     'neck:7:1': 'FMBC 1x1',
     'neck:8:0': 'FMBC 3x3',
     'neck:8:1': 'FMBC 1x1',
