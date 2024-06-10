@@ -1,7 +1,6 @@
 from efficientvit.models.ptq import BIT_TYPE_DICT
 
 
-
 class Config:
 
     def __init__(self, args):

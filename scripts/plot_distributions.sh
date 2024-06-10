@@ -26,7 +26,7 @@ for model in "${models[@]}"
 do
     echo "Plotting distributions of models"
     torchrun --nproc_per_node=2 \
-    eval_sam_model_joel.py \
+    eval_sam_quant_model.py \
     --dataset coco \
     --image_root coco/val2017 \
     --image_root_calibration coco/minitrain2017 \

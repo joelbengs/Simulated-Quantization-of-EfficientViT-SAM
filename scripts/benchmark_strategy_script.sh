@@ -12,13 +12,13 @@ export OMP_NUM_THREADS=$((nb_cpu_threads / nproc_per_node))
 
 backbones=(
 any:all:all:all
-#any:all_but_neck:all:all
+any:all_but_neck:all:all
 )
 # the protection of MBConvs is hardcoded into the ops.py definitions
 # WAAAAARNING THE FLAGS ARE SET TO False
 
 prompts=(
-#box
+box
 box_from_detector
 )
 
@@ -41,7 +41,7 @@ do
             echo " "
             # Run the evaluation command for the current model - with --quantize and configurations
             torchrun --nproc_per_node=2 \
-            eval_sam_model_joel.py \
+            eval_sam_quant_model.py \
             --dataset coco \
             --image_root coco/val2017 \
             --dataset_calibration sa-1b \
@@ -49,7 +49,7 @@ do
             --annotation_json_file coco/annotations/lvis_v1_val.json \
             --annotation_json_file coco/annotations/instances_val2017.json \
             --source_json_file coco/source_json_file/coco_vitdet.json \
-            --limit_iterations 4500 \
+            --limit_iterations 20 \
             --model $model \
             --prompt_type $prompt \
             --backbone_version $backbone_item \
@@ -82,14 +82,14 @@ do
             echo " "
             # Run the evaluation command for the current model - with --quantize and configurations
             torchrun --nproc_per_node=2 \
-            eval_sam_model_joel.py \
+            eval_sam_quant_model.py \
             --dataset lvis \
             --image_root coco \
             --dataset_calibration sa-1b \
             --image_root_calibration sa-1b \
             --annotation_json_file coco/annotations/lvis_v1_val.json \
             --source_json_file coco/source_json_file/lvis_vitdet.json \
-            --limit_iterations 20\
+            --limit_iterations 4500\
             --model $model \
             --prompt_type $prompt \
             --backbone_version $backbone_item \
