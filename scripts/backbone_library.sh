@@ -1,3 +1,7 @@
+# Author: Joel Bengs. Apache-2.0 license
+# This file is a library for the pre-defined backbone variants.
+# They are defined in config/quant_backbone_zoo.py
+
 backbones_baselines=(
 L0:none:none:none
 L1:none:none:none
@@ -499,17 +503,3 @@ XL1:neck:14:0
 XL1:neck:14:1
 XL1:neck:15:0
 )
-
-# Convert the arrays to strings
-backbones_L0_string=$(IFS=','; echo "${backbones_L0[*]}")
-backbones_L1_string=$(IFS=','; echo "${backbones_L1[*]}")
-backbones_L2_string=$(IFS=','; echo "${backbones_L2[*]}")
-backbones_XL0_string=$(IFS=','; echo "${backbones_XL0[*]}")
-backbones_XL1_string=$(IFS=','; echo "${backbones_XL1[*]}")
-
-# Export the strings
-export BACKBONES_L0="$backbones_L0_string"
-export BACKBONES_L1="$backbones_L1_string"
-export BACKBONES_L2="$backbones_L2_string"
-export BACKBONES_XL0="$backbones_XL0_string"
-export BACKBONES_XL1="$backbones_XL1_string"

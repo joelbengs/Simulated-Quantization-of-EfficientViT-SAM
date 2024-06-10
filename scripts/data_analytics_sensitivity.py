@@ -1,3 +1,6 @@
+# Author: Joel Bengs. Apache-2.0 license
+# This code produces graphs from the quantization experiments on layer-wise sensitivity.
+
 import argparse
 import pandas as pd
 import numpy as np

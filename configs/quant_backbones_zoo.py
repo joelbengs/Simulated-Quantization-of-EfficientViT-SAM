@@ -1,6 +1,4 @@
-# Backbone architectures for quantization experimentation
-# for key in REGISTERED_BACKBONE_VERSIONS.keys(): print(key)
-
+# Author: Joel Bengs. Apache-2.0 license
 
 '''
 This code creates and exports architectures for quantization of the image encoder, along with descriptions of each layer

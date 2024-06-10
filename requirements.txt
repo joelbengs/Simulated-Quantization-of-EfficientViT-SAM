@@ -17,4 +17,3 @@ git+https://github.com/alibaba/TinyNeuralNetwork.git
 git+https://github.com/facebookresearch/segment-anything.git
 
 pycocotools
-adjustText

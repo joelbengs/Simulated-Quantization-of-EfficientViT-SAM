@@ -1,3 +1,7 @@
+# Author: Joel Bengs. Apache-2.0 license
+# This code produces graphs of the results of quantizied models.
+# Specifically, the accuracy-latency and accuracy-size trade-off
+
 import argparse
 import matplotlib.pyplot as plt
 from configs.quant_backbones_zoo import REGISTERED_BACKBONE_DESCRIPTIONS_LARGE, REGISTERED_BACKBONE_DESCRIPTIONS_XL

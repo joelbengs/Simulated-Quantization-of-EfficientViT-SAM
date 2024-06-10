@@ -1,7 +1,10 @@
-
 # EfficientViT: Multi-Scale Linear Attention for High-Resolution Dense Prediction
 # Han Cai, Junyan Li, Muyan Hu, Chuang Gan, Song Han
 # International Conference on Computer Vision (ICCV), 2023
+
+# Modified by Joel Bengs on 2024-06-11 under Apache-2.0 license
+# Changes made:
+# - Implemented simulation of mixed-precision quantization to further accelerate EfficientViT-SAM
 
 import argparse
 import json
@@ -23,7 +26,6 @@ from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 from torchinfo import summary
-import pprint
 
 from efficientvit.models.efficientvit.sam import EfficientViTSamPredictor
 from efficientvit.sam_model_zoo import create_sam_model
@@ -106,7 +108,7 @@ class eval_dataset(Dataset):
         else:
             raise NotImplementedError()
 
-        if self.prompt_type == "point" or self.prompt_type == "box" or self.prompt_type == "point_and_box":
+        if self.prompt_type == "point" or self.prompt_type == "box":
             self.annotations = json.load(open(self.annotation_json_file, "r"))["annotations"]
         elif self.prompt_type == "box_from_detector":
             self.source_json_file = json.load(open(source_json_file))
@@ -118,7 +120,7 @@ class eval_dataset(Dataset):
 
     def __getitem__(self, idx):
         image_path = self.images[idx]
-        if self.prompt_type == "point" or self.prompt_type == "box" or self.prompt_type == "point_and_box":
+        if self.prompt_type == "point" or self.prompt_type == "box":
             anns = [ann for ann in self.annotations if ann["image_id"] == self.ids[idx]]
             return {"image_path": image_path, "anns": anns}
         elif self.prompt_type == "box_from_detector":
@@ -129,6 +131,27 @@ class eval_dataset(Dataset):
 
 
 class calib_dataset(Dataset):
+    """
+    A dataset class for calibration of quantization operators. It accepts coco and lvis datasets, but note that the model should not calibrate on the same dataset as validation in the zero-shot task.
+
+    Args:
+        dataset (str): The name of the dataset. Supported values are "sa-1b", "coco", and "lvis".
+        image_root (str): The root directory of the images.
+        prompt_type (str): The type of prompt. Supported values are "point", "box", and "box_from_detector".
+        annotation_json_file (str): The path to the annotation JSON file.
+        source_json_file (str, optional): The path to the source JSON file. Required only if prompt_type is "box_from_detector".
+
+    Raises:
+        NotImplementedError: If calibrating using a dataset other than "sa-1b", "coco", or "lvis", the naming scheme must be defined. Make sure to provide the --dataset_calibration argument.
+
+    Attributes:
+        images (list): A list of image paths.
+        ids (list): A list of image IDs.
+
+    Note:
+        A calibration dataloader should not use annotations, but they are included here to make other functions happy.
+    """
+
     def __init__(self, dataset, image_root, prompt_type, annotation_json_file, source_json_file=None):
         self.dataset = dataset
         self.image_root = image_root
@@ -153,7 +176,7 @@ class calib_dataset(Dataset):
         else:
             raise NotImplementedError("If calibrating using other dataset than SA-1B, coco, or lvis, you must define the naming scheme. Did you forget the argument --dataset_calibration?")
         # A calibration dataloader should not use annotations, but here they are to make other funcitons happy
-        if self.prompt_type == "point" or self.prompt_type == "box" or self.prompt_type == "point_and_box":
+        if self.prompt_type == "point" or self.prompt_type == "box":
             self.annotations = json.load(open(self.annotation_json_file, "r"))["annotations"]
         elif self.prompt_type == "box_from_detector":
             self.source_json_file = json.load(open(source_json_file))
@@ -165,7 +188,7 @@ class calib_dataset(Dataset):
 
     def __getitem__(self, idx):
         image_path = self.images[idx]
-        if self.prompt_type == "point" or self.prompt_type == "box" or self.prompt_type == "point_and_box":
+        if self.prompt_type == "point" or self.prompt_type == "box":
             anns = [ann for ann in self.annotations if ann["image_id"] == self.ids[idx]]
             return {"image_path": image_path, "anns": anns}
         elif self.prompt_type == "box_from_detector":
@@ -178,7 +201,58 @@ class calib_dataset(Dataset):
 def collate_fn(batch):
     return batch
 
+
+def toggle_operation(efficientvit_sam, operation, state, backbone_version: str, print_progress=False):
+    """
+    This function is used to toggle a specific operation on or off in the EfficientViT SAM model.
+
+    Parameters:
+    efficientvit_sam (object): The EfficientViT SAM model in which the operation needs to be toggled.
+    operation (str): The name of the operation to be toggled.
+    state (str): The state to which the operation needs to be toggled. Must be either 'on' or 'off'.
+    backbone_version (str): The version of the backbone used in the model. Must be one of the registered backbone versions from quant_backbone_zoo.py.
+    print_progress (bool, optional): If set to True, progress will be printed. Defaults to False.
+
+    The function works as follows:
+    1. Checks if the state is either 'on' or 'off'. If not, raises a ValueError.
+    2. Checks if the backbone_version is one of the registered versions. If not, raises a NotImplementedError.
+    3. Calls the appropriate method on the model to toggle the operation to the desired state.
+
+    Note: The specific method called on the model is determined by the operation and state parameters. 
+    For example, if operation is 'calibrate' and state is 'on', the method called would be 'toggle_selective_calibrate_on'.
+    """
+
+    printout=(local_rank==0 and print_progress is True)
+    if state not in ['on', 'off']:
+        raise ValueError("State must be either 'on' or 'off'")
+    if backbone_version in REGISTERED_BACKBONE_VERSIONS:
+        getattr(efficientvit_sam, f'toggle_selective_{operation}_{state}')(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
+    else:
+        raise NotImplementedError("Backbone version not yet implemented")
+
+
 def calibrate_image_encoder(efficientvit_sam, calib_dataloader, args, local_rank):
+    """
+    This function is used to calibrate the quantization operators.
+
+    Parameters:
+    efficientvit_sam (object): The EfficientViT SAM model that needs to be calibrated.
+    calib_dataloader (DataLoader): The DataLoader object that provides batches of images for calibration.
+    args (object): An object containing various arguments needed for the calibration process. 
+                   This includes 'backbone_version' and 'limit_iterations'.
+    local_rank (int): The rank of the current process in a distributed setting. Used to avoid double printouts.
+
+    The function works as follows:
+    1. Moves the model to the correct GPU and sets it to evaluation mode.
+    2. Creates a predictor using the model.
+    3. Turns on the 'calibrate' operation for all relevant modules in the model.
+    4. Iterates over each batch of images from the DataLoader.
+    5. If it's the second to last batch, it turns on the 'last_calibrate' operation for all relevant modules, so that they can fetch their parameters in the last batch.
+    6. For each image, it runs inference through the image encoder.
+    7. After all images have been processed, it turns off the 'calibrate' and 'last_calibrate' operations.
+
+    Note: The length of the DataLoader is dynamic as data is split over GPUs.
+    """
     printout=(local_rank==0)
     efficientvit_sam = efficientvit_sam.cuda(local_rank).eval()                 # move model to correct GPU, and turn on eval mode
     predictor = EfficientViTSamPredictor(efficientvit_sam)                      # create predictor
@@ -296,14 +370,10 @@ def run_box_from_detector(efficientvit_sam, dataloader, local_rank):
 
     return merged_outs
 
+# Evaluates a model with printout
 def evaluate(results, prompt_type, dataset, annotation_json_file=None):
     if prompt_type == "point" or prompt_type == "box":
         print(", ".join([f"{key}={val:.3f}" for key, val in get_iou_metric(results).items()]))
-    elif prompt_type =="point_and_box":
-        results_point = results[0]
-        results_box = results[1]
-        print("point-prompted scores: ", ", ".join([f"{key}={val:.3f}" for key, val in get_iou_metric(results_point).items()]))
-        print("box-prompted scores: ", ", ".join([f"{key}={val:.3f}" for key, val in get_iou_metric(results_box).items()]))
     elif prompt_type == "box_from_detector":
         iou_type = "segm"
         if dataset == "coco":
@@ -315,38 +385,17 @@ def evaluate(results, prompt_type, dataset, annotation_json_file=None):
     else:
         raise NotImplementedError()
 
+# Evaluates a model to a pandas dataframe
 def evaluate_to_dataframe(dataframe, results, prompt_type, dataset, annotation_json_file=None, args=None):
     # append each new result to the dataframe, and return the dataframe
     if prompt_type == "point" or prompt_type == "box":
         metrics = get_iou_metric(results)
         for key, val in metrics.items():
             dataframe.at[dataframe.index[-1], key] = val
-
-        more_metrics = calculate_savings(efficientvit_sam=efficientvit_sam)
-
-        for key, val in more_metrics.items():
-            dataframe.at[dataframe.index[-1], key] = val
-        return dataframe
-    
-    elif prompt_type == "point_and_box":
-        # in this prompt_type, 'results' is a list of the scores from point and box prompts respectively
-        point_results = results[0]
-        box_results = results[1]
-
-        metrics = get_iou_metric(point_results)
-        for key, val in metrics.items():
-            dataframe.at[dataframe.index[-1], "point_" + key] = val
-
-        metrics = get_iou_metric(box_results)
-        for key, val in metrics.items():
-            dataframe.at[dataframe.index[-1], "box_" + key] = val
-
         more_metrics = calculate_savings(efficientvit_sam=efficientvit_sam)
         for key, val in more_metrics.items():
             dataframe.at[dataframe.index[-1], key] = val
-
         return dataframe
-    
     elif prompt_type == "box_from_detector":
         iou_type = "segm"
         if dataset == "coco":
@@ -356,6 +405,7 @@ def evaluate_to_dataframe(dataframe, results, prompt_type, dataset, annotation_j
     else:
         raise NotImplementedError()
 
+# Creates or loads a pandas dataframe
 def create_dataframe(prompt_type, columns, script_name: str) -> pd.DataFrame:
     # add columns
     if prompt_type == 'box' or prompt_type == "point":
@@ -364,17 +414,6 @@ def create_dataframe(prompt_type, columns, script_name: str) -> pd.DataFrame:
             "large",
             "medium",
             "small", 
-            ])
-    elif prompt_type == "point_and_box":
-            columns.extend([
-            "point_all",
-            "point_large",
-            "point_medium",
-            "point_small", 
-            "box_all",
-            "box_large",
-            "box_medium",
-            "box_small",
             ])
     elif prompt_type == "box_from_detector":
         raise NotImplementedError("create_dataframe not implemented for prompt_type")
@@ -396,6 +435,7 @@ def create_dataframe(prompt_type, columns, script_name: str) -> pd.DataFrame:
         df = pd.DataFrame(columns=columns)
     return df
 
+# Saves metadata about the current experiment to a dataframe
 def metadata_to_dataframe(dataframe: pd.DataFrame, args, config, columns) -> pd.DataFrame:
     row_data = {}
     # save metadata from args
@@ -416,6 +456,7 @@ def metadata_to_dataframe(dataframe: pd.DataFrame, args, config, columns) -> pd.
     dataframe = pd.concat([dataframe, pd.DataFrame([row_data])], ignore_index=True)
     return dataframe
 
+# Saves pandas dataframe to pkl file
 def save_dataframe_to_file(dataframe: pd.DataFrame, script_name: str) -> None:
     # Save the dataframe as a pickle file in the 'results' directory. Will overwrite.
     # remove any leading directories and extensions from the script name
@@ -423,15 +464,7 @@ def save_dataframe_to_file(dataframe: pd.DataFrame, script_name: str) -> None:
     script_name = os.path.splitext(script_name)[0]
     dataframe.to_pickle(path=f'results/{script_name}.pkl')
 
-def toggle_operation(efficientvit_sam, operation, state, backbone_version: str, print_progress=False):
-    printout=(local_rank==0 and print_progress is True)
-    if state not in ['on', 'off']:
-        raise ValueError("State must be either 'on' or 'off'")
-    if backbone_version in REGISTERED_BACKBONE_VERSIONS:
-        getattr(efficientvit_sam, f'toggle_selective_{operation}_{state}')(printout=printout, **REGISTERED_BACKBONE_VERSIONS[backbone_version])
-    else:
-        raise NotImplementedError("Backbone version not yet implemented")
-
+# Calculates the megabytes saved from quantization
 def calculate_savings(efficientvit_sam):
     # calculates the theorethical savings from the applied quantization. Assumes from FP16 to INT8
     affected = efficientvit_sam.get_number_of_quantized_params() #number of weights
@@ -445,6 +478,7 @@ def calculate_savings(efficientvit_sam):
         "megabytes_saved": megabytes_saved,
     }
 
+# helper method that plots the historam of an individual observer
 def plot_histogram_of_observer(observer: BaseObserver, sizes, model: str):
         if observer.stored_tensor.numel() == 0:
             print(f"The tensor of {observer.stage_id}:{observer.block_position}:{observer.layer_position}:{observer.weight_norm_or_act} observer is empty! Has calibration been performed with attribute monitor_distributions turned on?")
@@ -481,78 +515,14 @@ def plot_histogram_of_observer(observer: BaseObserver, sizes, model: str):
         plt.savefig(f'./plots/histograms/{model.split("_")[0]}/histogram_{observer.stage_id}:{observer.block_position}:{observer.layer_position}_{observer.block_name}_{observer.weight_norm_or_act}.png')
         plt.close()
 
-def plot_box_plot_of_observer(observer: BaseObserver):
-        if observer.stored_tensor.numel() == 0:
-            print(f"The tensor of {observer.stage_id}:{observer.block_position}:{observer.layer_position}:{observer.weight_norm_or_act} observer is empty! Has calibration been performed with attribute monitor_distributions turned on?")
-
-        tensor = observer.stored_tensor # might need to clone to isolate from other processes
-        tensor = tensor.detach() # can't call numpy() on tensor that requires grad
-        tensor = tensor.cpu() #torch.histogram is not implemented on CUDA backend.
-        # Reshape tensor to 2D, with second dimension being the flattened kernel
-        tensor_2d = tensor.view(tensor.shape[0], -1)
-
-        # Calculate Interquartile Range (IQR) for each channel
-        Q1 = torch.quantile(tensor_2d, 0.25, dim=1)
-        Q3 = torch.quantile(tensor_2d, 0.75, dim=1)
-        IQR = Q3 - Q1
-
-        # Define outliers based on IQR
-        lower_bound = Q1 - 1.5 * IQR
-        upper_bound = Q3 + 1.5 * IQR
-
-        # Find the largest outlier for each channel
-        lower_outliers = tensor_2d < lower_bound.unsqueeze(1)
-        upper_outliers = tensor_2d > upper_bound.unsqueeze(1)
-        outliers = tensor_2d * (lower_outliers | upper_outliers)
-        max_outliers, _ = torch.max(outliers.abs(), dim=1)
-
-        # Sort channels by the size of their largest outlier and select the top 16
-        k = min(16, max_outliers.size(0))
-        _, indices = torch.topk(max_outliers, k)
-        tensor_2d = tensor_2d[indices]
-
-        # Create boxplot
-        plt.boxplot(tensor_2d, vert=True, patch_artist=True)
-        plt.title(f"Distribution of {observer.weight_norm_or_act} of {observer.stage_id}:{observer.block_position}:{observer.layer_position} - {observer.block_name}, \n tensor shape {tensor.size()}, ? calibration samples")
-        plt.xlabel("Channel number (output) - limited to the 16 with the largest outliers")
-        plt.ylabel(f"Relative Frequency of pre-trained weights" if observer.weight_norm_or_act == 'weight' else "Relative Frequency after calibration")
-
-        plt.savefig(f'./plots/boxplots/box_plot_{observer.stage_id}:{observer.block_position}:{observer.layer_position}_{observer.weight_norm_or_act}.png')
-        plt.close()
-
+# Function that calls plot_histogram_of_observer for all the observers in the model's image encoder
 def plot_distributions_of_image_encoder(efficientvit_sam, model: str):
-    sizes_w = {}
-    sizes_a = {}
-    sizes_n = {}
-    for m in efficientvit_sam.image_encoder.modules():
-        if type(m) in [QConvLayer, QConvLayerV2, QLiteMLA]:
-            if hasattr(m, 'weight_observer'):
-                plot_histogram_of_observer(m.weight_observer, sizes_w, model)
-                # plot_box_plot_of_observer(m.weight_observer)
-
-            if hasattr(m, 'act_observer'):
-                plot_histogram_of_observer(m.act_observer, sizes_a, model)
-                # plot_box_plot_of_observer(m.act_observer)
-
-            if hasattr(m, 'norm_observer'):
-                plot_histogram_of_observer(m.norm_observer, sizes_n, model)
-                # plot_box_plot_of_observer(m.act_observer)
-    print("size of weight tensors")
-    for key in sizes_w.keys():
-        print(key, sizes_w[key])
-    print("size of act tensors")
-    for key in sizes_a.keys():
-        print(key, sizes_a[key])
-    print("size of norm tensors")
-    for key in sizes_n.keys():
-        print(key, sizes_n[key])
-
-def full_precision_distribution_analysis(efficientvit_sam, model: str):
     '''
     This function plots the distributions of weights, activations and norms of a given model.
-    The results are saved under .plots/histograms and .plots/box_plots
+    The results are saved under .plots/histograms
+    This feature is experimental and should be used with caution.
 
-    This functinoality is implemented using observers. Each convolutional layer has one observer object connected to each of its operatiions (conv, norm, act).
+    This functinoality is implemented using observers. Each layer has one observer object connected to each of its operatiions (conv, norm, act...).
     When the attribute "monitor_distirbutions" is toggled to True, the observer object will store all sample tensors passing through during calibration.
     Weights are static, so more than one pass of calibration will not alter the weight distributions.
     Tensors passing throgh norm and activation will be concatenated in the observer. There is a risk for memory overflow, in which case the tensors should be reduced to histogram representations before storage.
@@ -568,14 +538,33 @@ def full_precision_distribution_analysis(efficientvit_sam, model: str):
 
     '''
     # assuming efficientvit_sam.toggle_monitor_distributions_on() has been called before calibration, and calibration has been run for at least one sample.
-    plot_distributions_of_image_encoder(efficientvit_sam, model)
+    sizes_w = {}
+    sizes_a = {}
+    sizes_n = {}
+    for m in efficientvit_sam.image_encoder.modules():
+        if type(m) in [QConvLayer, QConvLayerV2, QLiteMLA]:
+            if hasattr(m, 'weight_observer'):
+                plot_histogram_of_observer(m.weight_observer, sizes_w, model)
+            if hasattr(m, 'act_observer'):
+                plot_histogram_of_observer(m.act_observer, sizes_a, model)
+            if hasattr(m, 'norm_observer'):
+                plot_histogram_of_observer(m.norm_observer, sizes_n, model)
+    print("size of weight tensors")
+    for key in sizes_w.keys():
+        print(key, sizes_w[key])
+    print("size of act tensors")
+    for key in sizes_a.keys():
+        print(key, sizes_a[key])
+    print("size of norm tensors")
+    for key in sizes_n.keys():
+        print(key, sizes_n[key])
     efficientvit_sam.toggle_monitor_distributions_off()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str)
     parser.add_argument("--weight_url", type=str, default=None)
-    parser.add_argument("--prompt_type", type=str, default="point", choices=["point", "box", "box_from_detector", "point_and_box"])
+    parser.add_argument("--prompt_type", type=str, default="point", choices=["point", "box", "box_from_detector"])
     parser.add_argument("--num_click", type=int, default=1)
     parser.add_argument("--dataset", type=str, choices=["coco", "lvis"])
     parser.add_argument("--dataset_calibration", type=str, choices=["sa-1b", "coco", "lvis"], default="sa-1b")
@@ -694,7 +683,7 @@ if __name__ == "__main__":
             toggle_operation(efficientvit_sam, 'quant_norms', 'on', args.backbone_version, args.print_progress)
 
     if args.plot_distributions and local_rank == 0:
-        full_precision_distribution_analysis(efficientvit_sam, model=args.model)
+        plot_distributions_of_image_encoder(efficientvit_sam, model=args.model)
 
     # inference
     if args.prompt_type == "point":
@@ -703,9 +692,6 @@ if __name__ == "__main__":
         results = run_box(efficientvit_sam, dataloader, local_rank)
     elif args.prompt_type == "box_from_detector":
         results = run_box_from_detector(efficientvit_sam, dataloader, local_rank)
-    elif args.prompt_type == "point_and_box":
-        # to benchmark the same calibration over both tasks. No fully optimized: the same image embedding is currently reproduced in both tasks.
-        results = [run_point(efficientvit_sam, dataloader, args.num_click, local_rank), run_box(efficientvit_sam, dataloader, local_rank)]
     else:
         raise NotImplementedError(f"The task {args.prompt_type} is not implemented")
 
@@ -717,9 +703,6 @@ if __name__ == "__main__":
             df = evaluate_to_dataframe(df, results, args.prompt_type, args.dataset, args.annotation_json_file, args=args)
             print("New row added to results: \n", df.tail(1))
             save_dataframe_to_file(df, args.script_name)
-            print("")
-            evaluate(results, args.prompt_type, args.dataset, args.annotation_json_file)
-            calculate_savings(efficientvit_sam)
         else:
             print("")
             evaluate(results, args.prompt_type, args.dataset, args.annotation_json_file)

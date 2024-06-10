@@ -1,7 +1,7 @@
 # Copyright (c) MEGVII Inc. and its affiliates. All Rights Reserved.
-import numpy as np
-import torch
-import torch.nn as nn
+# Modified by Joel Bengs on 2024-06-11 under Apache-2.0 license
+# Changes made:
+# - Implemented into EfficientViT-SAM for quantization simulation
 
 '''
 Class that exports a dictionary of BitType objects, including uint4, int8 and uint8

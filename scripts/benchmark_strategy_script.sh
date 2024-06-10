@@ -1,6 +1,5 @@
-#!/bin/bash
-# author: Joel Bengs
-# Script for evaluating strategies
+# Author: Joel Bengs. Apache-2.0 license
+# Script for evaluating quantization strategies on EfficientViT-SAM
 
 # Get the number of CPU cores
 nb_cpu_threads=$(nproc)

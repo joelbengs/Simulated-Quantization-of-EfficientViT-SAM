@@ -1,23 +1,23 @@
-#!/bin/bash
-# author: Joel Bengs
+# Author: Joel Bengs. Apache-2.0 license
+# Script for executing layer-wise sensitivity analysis of EfficientViT-SAM
+# In these experiments, one layer at a time is quantized.
+# Box-Prompted Zero-Shot Instance Segmentation with
+# ground Truth bounding boxes on COCO dataset
 
-# Script for evaluating weight + activation quantization
-# Box-Prompted Zero-Shot Instance Segmentation
-# Ground Truth Bounding Box
+# Function:
+# Defines the necesarry config
+# Defines all the backbone variants in lists
+# Executes for one model at a time
 
 # Get the number of CPU cores
 nb_cpu_threads=$(nproc)
-
 # Set the number of processes per node (you choose)
 nproc_per_node=2
-
 # Calculate the optimal number of OpenMP threads, according to a formula from github: https://github.com/pytorch/pytorch/issues/22260
 export OMP_NUM_THREADS=$((nb_cpu_threads / nproc_per_node))
 # Note: Time to execute was the same if this was =1 or =32
 
-# Define the model family and prompt type 
-# WARNING!! Models without _quant in the name will not use the correct backbone!!
-
+# Define backbone variants from quant_backbone_zoo.py
 backbones_L0=(
 L0:stage0:0:0
 L0:stage0:1:0
@@ -508,6 +508,7 @@ XL1:neck:14:1
 XL1:neck:15:0
 )
 
+# these are not but instead specified individually below
 models=(
 "l0_quant"
 "l1_quant"
@@ -515,12 +516,10 @@ models=(
 "xl0_quant"
 "xl1_quant"
 )
-#
 
- #WAAAAARNING THE FLAGS ARE SET TO TRUE no they are not
+# Remeber that any hardcoded quant-protectors in ops.py should be set to False for these experiments.
 
-
-echo "--------- STARTING SCRIPT L0 ---------}"
+echo "--------- Layer-wise sensitivity analysis of EfficientViT-SAM L0 ---------}"
 model=l0_quant
 for backbone_item in "${backbones_L0[@]}"
 do
@@ -542,18 +541,11 @@ do
   --quantize_A \
   --export_dataframe \
   --script_name $model
-  # --limit_iterations 10 \
-  # --export_dataframe \
-  # --print_progress \
-  # --plot_distributions \
-  # --quantize_method_W $qmw \
-  # --quantize_A \
-  # --print_torchinfo \
 done
  
 
 
-echo "--------- STARTING SCRIPT L1 ---------}"
+echo "--------- Layer-wise sensitivity analysis of EfficientViT-SAM L1---------}"
 model=l1_quant
 for backbone_item in "${backbones_L1[@]}"
 do
@@ -575,17 +567,10 @@ do
   --quantize_A \
   --export_dataframe \
   --script_name $model
-  # --limit_iterations 10 \
-  # --export_dataframe \
-  # --print_progress \
-  # --plot_distributions \
-  # --quantize_method_W $qmw \
-  # --quantize_A \
-  # --print_torchinfo \
 done
 
 
-echo "--------- STARTING SCRIPT L2 ---------}"
+echo "--------- Layer-wise sensitivity analysis of EfficientViT-SAM L2 ---------}"
 model=l2_quant
 for backbone_item in "${backbones_L2[@]}"
 do
@@ -607,16 +592,9 @@ do
   --quantize_A \
   --export_dataframe \
   --script_name $model
-  # --limit_iterations 10 \
-  # --export_dataframe \
-  # --print_progress \
-  # --plot_distributions \
-  # --quantize_method_W $qmw \
-  # --quantize_A \
-  # --print_torchinfo \
 #done
 
-echo "--------- STARTING SCRIPT XL0 ---------}"
+echo "--------- Layer-wise sensitivity analysis of EfficientViT-SAM XL0 ---------}"
 model=xl0_quant
 for backbone_item in "${backbones_XL0[@]}"
 do
@@ -638,16 +616,9 @@ do
   --quantize_A \
   --export_dataframe \
   --script_name $model
-  # --limit_iterations 10 \
-  # --export_dataframe \
-  # --print_progress \
-  # --plot_distributions \
-  # --quantize_method_W $qmw \
-  # --quantize_A \
-  # --print_torchinfo \
 done
 
-echo "--------- STARTING SCRIPT XL1 ---------}"
+echo "--------- Layer-wise sensitivity analysis of EfficientViT-SAM XL1 ---------}"
 model=xl1_quant
 for backbone_item in "${backbones_XL1[@]}"
 do
@@ -669,13 +640,6 @@ do
   --quantize_A \
   --export_dataframe \
   --script_name $model
-  # --limit_iterations 10 \
-  # --export_dataframe \
-  # --print_progress \
-  # --plot_distributions \
-  # --quantize_method_W $qmw \
-  # --quantize_A \
-  # --print_torchinfo \
 done
 
 echo "--------- EVERYTHING COMPLETED ---------}"

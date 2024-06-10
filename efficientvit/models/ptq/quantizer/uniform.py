@@ -1,9 +1,10 @@
 # Copyright (c) MEGVII Inc. and its affiliates. All Rights Reserved.
-import torch
+# Modified by Joel Bengs on 2024-06-11 under Apache-2.0 license
+# Changes made:
+# - Implemented into EfficientViT-SAM for quantization simulationimport torch
 import torch.nn as nn
 
 from .base import BaseQuantizer
-
 
 class UniformQuantizer(BaseQuantizer):
 
@@ -43,7 +44,3 @@ class UniformQuantizer(BaseQuantizer):
         zero_point = zero_point.reshape(range_shape)
         outputs = (inputs - zero_point) * scale
         return outputs
-    
-    # forward() is definined in class BaseQuantizer(nn.Module):
-        # output = self.quant(input)
-        # return self.dequantize(input)
