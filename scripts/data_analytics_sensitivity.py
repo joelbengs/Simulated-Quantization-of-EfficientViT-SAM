@@ -7,7 +7,7 @@ import numpy as np
 import pickle
 import os
 import matplotlib.pyplot as plt
-from configs.quant_backbones_zoo import REGISTERED_BACKBONE_DESCRIPTIONS_LARGE, REGISTERED_BACKBONE_DESCRIPTIONS_XL, REGISTERED_BACKBONE_COLORS
+from efficientvit.quant_backbones_zoo import REGISTERED_BACKBONE_DESCRIPTIONS_LARGE, REGISTERED_BACKBONE_DESCRIPTIONS_XL, REGISTERED_BACKBONE_COLORS
 import matplotlib.patches as mpatches
 import matplotlib.lines as mlines
 

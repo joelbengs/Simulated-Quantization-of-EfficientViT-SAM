@@ -4,7 +4,7 @@
 
 import argparse
 import matplotlib.pyplot as plt
-from configs.quant_backbones_zoo import REGISTERED_BACKBONE_DESCRIPTIONS_LARGE, REGISTERED_BACKBONE_DESCRIPTIONS_XL
+from efficientvit.quant_backbones_zoo import REGISTERED_BACKBONE_DESCRIPTIONS_LARGE, REGISTERED_BACKBONE_DESCRIPTIONS_XL
 import matplotlib.patches as mpatches
 import matplotlib.lines as mlines
 

@@ -14,7 +14,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
-from configs.quant_backbones_zoo import REGISTERED_BACKBONE_VERSIONS
+from efficientvit.quant_backbones_zoo import REGISTERED_BACKBONE_VERSIONS
 from efficientvit.models.nn.ops import QConvLayer, QConvLayerV2, QLiteMLA
 from efficientvit.models.ptq.bit_type import BitType
 from efficientvit.models.ptq.observer.base import BaseObserver
@@ -680,7 +680,7 @@ if __name__ == "__main__":
         if args.quantize_A:
             toggle_operation(efficientvit_sam, 'quant_activations', 'on', args.backbone_version, args.print_progress)
         if args.quantize_N:
-            toggle_operation(efficientvit_sam, 'quant_norms', 'on', args.backbone_version, args.print_progress)
+            toggle_operation(efficientvit_sam, 'quant_norms', 'on', args.backbone_version, args.print_progress) # experimental feature
 
     if args.plot_distributions and local_rank == 0:
         plot_distributions_of_image_encoder(efficientvit_sam, model=args.model)
