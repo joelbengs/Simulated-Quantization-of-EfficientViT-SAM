@@ -5,7 +5,7 @@
 # ground Truth bounding boxes on COCO dataset
 
 # Function:
-# Defines the necesarry config
+# Defines the necessary config
 # Defines all the backbone variants in lists
 # Executes for one model at a time
 

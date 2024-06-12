@@ -12,11 +12,9 @@ export OMP_NUM_THREADS=$((nb_cpu_threads / nproc_per_node))
 backbones=(
 any:all:all:all
 )
-# the protection of MBConvs is hardcoded into the ops.py definitions
-# WAAAAARNING THE FLAGS ARE SET TO False
 
 prompts=(
-box
+#box
 box_from_detector
 )
 
