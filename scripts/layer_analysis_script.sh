@@ -519,7 +519,7 @@ models=(
 
 # Remeber that any hardcoded quant-protectors in ops.py should be set to False for these experiments.
 
-echo "--------- Layer-wise sensitivity analysis of EfficientViT-SAM L0 ---------}"
+echo "{--------- Layer-wise sensitivity analysis of EfficientViT-SAM L0 ---------}"
 model=l0_quant
 for backbone_item in "${backbones_L0[@]}"
 do

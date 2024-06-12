@@ -11,7 +11,6 @@ export OMP_NUM_THREADS=$((nb_cpu_threads / nproc_per_node))
 
 backbones=(
 any:all:all:all
-any:all_but_neck:all:all
 )
 # the protection of MBConvs is hardcoded into the ops.py definitions
 # WAAAAARNING THE FLAGS ARE SET TO False
@@ -29,8 +28,7 @@ xl0_quant
 xl1_quant
 )
 
-echo "--------- Benchmarking script on COCO, INT8 everything ---------}"
-
+echo "--------- Benchmarking Mix-DWSC on COCO (remeber to toggle two flags in OPS.py) ---------"
 for backbone_item in "${backbones[@]}"
 do
     for prompt in "${prompts[@]}"
@@ -48,29 +46,19 @@ do
             --annotation_json_file coco/annotations/lvis_v1_val.json \
             --annotation_json_file coco/annotations/instances_val2017.json \
             --source_json_file coco/source_json_file/coco_vitdet.json \
-            --limit_iterations 20 \
+            --limit_iterations 4500 \
             --model $model \
             --prompt_type $prompt \
             --backbone_version $backbone_item \
             --quantize_W \
             --quantize_A \
-            --script_name benchmark
-            # --limit_iterations 10 \
-            # --export_dataframe \
-            # --print_progress \
-            # --plot_distributions \
-            # --quantize_method_W $qmw \
-            # --quantize_N \ # NOT NORMALLY USED
-            # --quantize_A \
-            # --observer_method_W $obsmethod \
-            # --observer_method_A $obsmethod \
-            # --print_torchinfo \
+            --script_name benchmark_coco_dwsc
             echo "$prompt COCO: $model, $backbone_item" §
         done
     done
 done
 
-echo "--------- Benchmarking script on LVIS, INT8 everything ---------}"
+echo "--------- Benchmarking Mix-DWSC on LVIS (remeber to toggle two flags in OPS.py) ---------"
 
 for backbone_item in "${backbones[@]}"
 do
@@ -94,17 +82,7 @@ do
             --backbone_version $backbone_item \
             --quantize_W \
             --quantize_A \
-            --script_name benchmark
-            # --limit_iterations 10 \
-            # --export_dataframe \
-            # --print_progress \
-            # --plot_distributions \
-            # --quantize_method_W $qmw \
-            # --quantize_N \ # NOT NORMALLY USED
-            # --quantize_A \
-            # --observer_method_W $obsmethod \
-            # --observer_method_A $obsmethod \
-            # --print_torchinfo \
+            --script_name benchmark_lvis_dwsc
             echo "$prompt LVIS: $model, $backbone_item" §
         done
     done
