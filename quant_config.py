@@ -3,6 +3,8 @@
 # Changes made:
 # - Implemented into EfficientViT-SAM for quantization simulation
 
+'''Use this file to change quantization configurations. You can also make changes for an individual project by using '''
+
 from efficientvit.models.ptq import BIT_TYPE_DICT
 
 class Config:
