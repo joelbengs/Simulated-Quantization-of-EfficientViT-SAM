@@ -1,8 +1,9 @@
 # Simulated Quantization of EfficientViT-SAM
 
-This repository applies simulated quantization to [EfficientViT-SAM](https://github.com/mit-han-lab/efficientvit), a state-of-the-art segmentation model based. Below is an outline of results, implementation details, and how to use this framework. A word of caution: the simulation accuracy does not aggree with results obtained when deploying simulation using NVIDIA TensorRT.
+This repository applies simulated quantization to [EfficientViT-SAM](https://github.com/mit-han-lab/efficientvit), a state-of-the-art segmentation model. Below is an outline of results, implementation details, and how to use this framework. A word of caution: the simulation accuracy does not aggree with results obtained when deploying simulation using NVIDIA TensorRT.
 
 ## EfficientViT Applications
+EfficientViT has many applications, one of which is Segment Anything
 
 ### [Segment Anything](applications/sam.md)
 
