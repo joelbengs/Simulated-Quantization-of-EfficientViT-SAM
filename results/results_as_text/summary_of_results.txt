@@ -1,19 +1,29 @@
+These are measurements results, formatted to easily be transferable to latex tables
+The include
+Mix-DWSC
+Mix-MBC-Neck
+Summary tables on the accuracy-efficiency trade-off
+Transfer to Tensor-RT: accuracy
+Transfer to TensorRT: latency
+
+
 any:all:all:all DWSConv protected ---------}
 Mix-DWSC
 
-1860.0 Mb
-2720.0 Mb
-3670.0 Mb
-7220.0 Mb
-13330.0 Mb
+Savings:
+18.6 Mb
+27.2 Mb
+36.7 Mb
+72.2 Mb
+133.3 Mb
 
 mIoU COCO and LVIS
 
- L0 Mix-DWSC & 758000.0 (\(\downarrow 3.3\%  \))   & 802000.0 & 780000.0 & 713000.0   &  743000.0 (\(\downarrow 4.6\%  \))  & 854000.0 & 824000.0 & 691000.0 \\
- L1 Mix-DWSC & 753000.0 (\(\downarrow 4.1\%  \))   & 795000.0 & 776000.0 & 710000.0   &  738000.0 (\(\downarrow 5.4\%  \))  & 847000.0 & 820000.0 & 686000.0 \\
- L2 Mix-DWSC & 698000.0 (\(\downarrow 11.8\%  \))   & 723000.0 & 711000.0 & 673000.0  &  692000.0 (\(\downarrow 12.0\% \))  & 747000.0 & 758000.0 & 656000.0 \\
-Xl0 Mix-DWSC & 190000.0 (\(\downarrow 76.2\% \))    & 67000.0  & 180000.0 & 270000.0  &  230000.0 (\(\downarrow 71.1\% \))  & 78000.0 & 187000.0 & 273000.0  \\
-Xl1 Mix-DWSC & 247000.0 (\(\downarrow 69.1\% \))    & 57000.0  & 310000.0 & 306000.0  &  252000.0 (\(\downarrow 68.5\% \))  & 64000.0 & 324000.0 & 255000.0  \\
+ L0 Mix-DWSC & 75.8 (\(\downarrow 3.3\%  \))   & 80.2 & 780000.0 & 713000.0   &  743000.0 (\(\downarrow 4.6\%  \))  & 854000.0 & 824000.0 & 691000.0 \\
+ L1 Mix-DWSC & 75.3 (\(\downarrow 4.1\%  \))   & 79.5 & 776000.0 & 710000.0   &  738000.0 (\(\downarrow 5.4\%  \))  & 847000.0 & 820000.0 & 686000.0 \\
+ L2 Mix-DWSC & 69.8 (\(\downarrow 11.8\%  \))  & 72.3 & 711000.0 & 673000.0  &  692000.0 (\(\downarrow 12.0\% \))  & 747000.0 & 758000.0 & 656000.0 \\
+Xl0 Mix-DWSC & 19.0 (\(\downarrow 76.2\% \))   & 67  & 180000.0 & 270000.0  &  230000.0 (\(\downarrow 71.1\% \))  & 78000.0 & 187000.0 & 273000.0  \\
+Xl1 Mix-DWSC & 24.7 (\(\downarrow 69.1\% \))   & 57  & 310000.0 & 306000.0  &  252000.0 (\(\downarrow 68.5\% \))  & 64000.0 & 324000.0 & 255000.0  \\
  
 Average Precision COCO and lvis
 
@@ -64,26 +74,6 @@ XL1   &  0.4  (\(\downarrow 99.2\% \))        & - & n/a &  247 (\(\downarrow 35\
  97	12%
 186	13%
 326	14%
-
-
-TensorRT transfer ----------- V1
-
-L0 Mix-DWSC (TensorRT)      & 75.8 & 61.5 (\(\downarrow 18.9\%  \)) - \\
-L2 Mix-DWSC (TensorRT)      & 69.8 & 15.3 (\(\downarrow 78.0\%  \)) - \\ \midrule
-L0 Mix-MBC-Neck (TensorRT)  & 77.5 & 52.3 (\(\downarrow 32.5\% \))  - \\
-L2 Mix-MBC-Neck (TensorRT)  & 77.9 & 61.2 (\(\downarrow 21.4\% \)) - \\
-
-
-{"all": 57.5, "large": 54.6, "medium": 54.9, "small": 61.4}
-{"all": 61.7, "large": 60.6, "medium": 60.6, "small": 63.2}
-{"all": 35.4, "large": 26.2, "medium": 29.3, "small": 45.8}
-{"all": 26.8, "large": 24.0, "medium": 11.9, "small": 40.7}
-
-
- "large": 74.33645042915866, "medium": 62.59608091262114, "small": 53.24032008315452}
-, "large": 16.28558973012066, "medium": 12.984230531882172, "small": 16.685374000763918}
- "large": 58.2739267334358, "medium": 49.38480134660141, "small": 51.284475105897556}
-"large": 62.269664722467944, "medium": 61.01169141402272, "small": 60.63431823974818}
 
 
 TensorRT transfer ----------- V2, mAP COCO 

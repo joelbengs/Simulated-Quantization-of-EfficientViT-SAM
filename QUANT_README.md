@@ -279,20 +279,10 @@ all=34.807, large=26.110, medium=34.973, small=39.722
 saved 107.61 Mb
 box COCO: xl0_quant, any:all:all:all §
 
+all=24.823, large=4.068, medium=30.220, small=32.451
+saved 189.96 Mb
+box COCO: xl1_quant, any:all:all:all §
 
-loading annotations into memory...
-Done (t=0.65s)
-creating index...
-index created!
-Loading and preparing results...
-DONE (t=1.27s)
-creating index...
-index created!
-Running per image evaluation...
-Evaluate annotation type *segm*
-DONE (t=17.23s).
-Accumulating evaluation results...
-DONE (t=2.23s).
  Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.054
  Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ] = 0.163
  Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ] = 0.028
@@ -354,6 +344,20 @@ box_from_detector COCO: l2_quant, any:all:all:all §
 saved 107.61 Mb
 box_from_detector COCO: xl0_quant, any:all:all:all §
 
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.004
+ Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ] = 0.022
+ Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ] = 0.000
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.004
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.009
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.000
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=  1 ] = 0.011
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 10 ] = 0.022
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.023
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.032
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.039
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.000
+saved 189.96 Mb
+box_from_detector COCO: xl1_quant, any:all:all:all §
 
 ## Troubleshooting
 The scripts do export OMP_NUM_THREADS. This value may not be compatible with your hardware.

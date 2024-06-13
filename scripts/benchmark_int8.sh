@@ -19,10 +19,10 @@ box_from_detector
 )
 
 models=(
-l0_quant
-l1_quant
-l2_quant
-xl0_quant
+#l0_quant
+#l1_quant
+#l2_quant
+#xl0_quant
 xl1_quant
 )
 
