@@ -4,25 +4,17 @@ __pycache__/
 .dev/
 .exp/
 
-assets/checkpoints
-assets/checkpoints/
+assets/checkpoints/*
 assets/export_models/
 assets/coco/
 assets/imagenet/
 assets/demo/
 coco
 imagenet
-results/
-wandb/
 sa-1b/
 sa-1b/*
-plots/boxplots_backup/*
 plots/histograms/l0/*
 plots/histograms/l1/*
 plots/histograms/l2/*
 plots/histograms/xl0/*
 plots/histograms/xl1/*
-plots/histograms_backup/*
-plots/old_graphs/*
-plots/very_old_graphs/*
-results_old/*

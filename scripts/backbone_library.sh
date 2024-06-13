@@ -1,23 +1,21 @@
 # Author: Joel Bengs. Apache-2.0 license
-# Script for executing layer-wise sensitivity analysis of EfficientViT-SAM
-# In these experiments, one layer at a time is quantized.
-# Box-Prompted Zero-Shot Instance Segmentation with
-# ground Truth bounding boxes on COCO dataset
+# This file is a library for the pre-defined backbone variants.
+# They are defined in config/quant_backbone_zoo.py
 
-# Function:
-# Defines the necessary config
-# Defines all the backbone variants in lists
-# Executes for one model at a time
+backbones_baselines=(
+L0:none:none:none
+L1:none:none:none
+L2:none:none:none
+XL0:none:none:none
+XL1:none:none:none
+L0:all:all:all
+L1:all:all:all
+L2:all:all:all
+XL0:all:all:all
+XL1:all:all:all
+)
 
-# Get the number of CPU cores
-nb_cpu_threads=$(nproc)
-# Set the number of processes per node (you choose)
-nproc_per_node=2
-# Calculate the optimal number of OpenMP threads, according to a formula from github: https://github.com/pytorch/pytorch/issues/22260
-export OMP_NUM_THREADS=$((nb_cpu_threads / nproc_per_node))
-# Note: Time to execute was the same if this was =1 or =32
 
-# Define backbone variants from quant_backbone_zoo.py
 backbones_L0=(
 L0:stage0:0:0
 L0:stage0:1:0
@@ -85,7 +83,6 @@ L0:neck:6:0
 L0:neck:6:1
 L0:neck:7:0
 )
-
 
 backbones_L1=(
 L1:stage0:0:0
@@ -301,7 +298,6 @@ L2:neck:14:1
 L2:neck:15:0
 )
 
-
 backbones_XL0=(
 XL0:stage0:0:0
 XL0:stage1:0:0
@@ -507,139 +503,3 @@ XL1:neck:14:0
 XL1:neck:14:1
 XL1:neck:15:0
 )
-
-# these are not but instead specified individually below
-models=(
-"l0_quant"
-"l1_quant"
-"l2_quant"
-"xl0_quant"
-"xl1_quant"
-)
-
-# Remeber that any hardcoded quant-protectors in ops.py should be set to False for these experiments.
-
-echo "{--------- Layer-wise sensitivity analysis of EfficientViT-SAM L0 ---------}"
-model=l0_quant
-for backbone_item in "${backbones_L0[@]}"
-do
-  echo " "
-  echo "Model $model, backbone_version: $backbone_item" §
-  # Run the evaluation command for the current model - with --quantize and configurations
-  torchrun --nproc_per_node=2 \
-  eval_sam_quant_model.py \
-  --dataset coco \
-  --image_root coco/val2017 \
-  --dataset_calibration sa-1b \
-  --image_root_calibration sa-1b \
-  --annotation_json_file coco/annotations/instances_val2017.json \
-  --model $model \
-  --limit_iterations 2250 \
-  --prompt_type box \
-  --backbone_version $backbone_item \
-  --quantize_W \
-  --quantize_A \
-  --export_dataframe \
-  --script_name $model
-done
- 
-
-
-echo "--------- Layer-wise sensitivity analysis of EfficientViT-SAM L1---------}"
-model=l1_quant
-for backbone_item in "${backbones_L1[@]}"
-do
-  echo " "
-  echo "Model $model, backbone_version: $backbone_item" §
-  # Run the evaluation command for the current model - with --quantize and configurations
-  torchrun --nproc_per_node=2 \
-  eval_sam_quant_model.py \
-  --dataset coco \
-  --image_root coco/val2017 \
-  --dataset_calibration sa-1b \
-  --image_root_calibration sa-1b \
-  --annotation_json_file coco/annotations/instances_val2017.json \
-  --model $model \
-  --limit_iterations 2250 \
-  --prompt_type box \
-  --backbone_version $backbone_item \
-  --quantize_W \
-  --quantize_A \
-  --export_dataframe \
-  --script_name $model
-done
-
-
-echo "--------- Layer-wise sensitivity analysis of EfficientViT-SAM L2 ---------}"
-model=l2_quant
-for backbone_item in "${backbones_L2[@]}"
-do
-  echo " "
-  echo "Model $model, backbone_version: $backbone_item" §
-  # Run the evaluation command for the current model - with --quantize and configurations
-  torchrun --nproc_per_node=2 \
-  eval_sam_quant_model.py \
-  --dataset coco \
-  --image_root coco/val2017 \
-  --dataset_calibration sa-1b \
-  --image_root_calibration sa-1b \
-  --annotation_json_file coco/annotations/instances_val2017.json \
-  --model $model \
-  --limit_iterations 2250 \
-  --prompt_type box \
-  --backbone_version $backbone_item \
-  --quantize_W \
-  --quantize_A \
-  --export_dataframe \
-  --script_name $model
-#done
-
-echo "--------- Layer-wise sensitivity analysis of EfficientViT-SAM XL0 ---------}"
-model=xl0_quant
-for backbone_item in "${backbones_XL0[@]}"
-do
-  echo " "
-  echo "Model $model, backbone_version: $backbone_item" §
-  # Run the evaluation command for the current model - with --quantize and configurations
-  torchrun --nproc_per_node=2 \
-  eval_sam_quant_model.py \
-  --dataset coco \
-  --image_root coco/val2017 \
-  --dataset_calibration sa-1b \
-  --image_root_calibration sa-1b \
-  --annotation_json_file coco/annotations/instances_val2017.json \
-  --model $model \
-  --limit_iterations 2250 \
-  --prompt_type box \
-  --backbone_version $backbone_item \
-  --quantize_W \
-  --quantize_A \
-  --export_dataframe \
-  --script_name $model
-done
-
-echo "--------- Layer-wise sensitivity analysis of EfficientViT-SAM XL1 ---------}"
-model=xl1_quant
-for backbone_item in "${backbones_XL1[@]}"
-do
-  echo " "
-  echo "Model $model, backbone_version: $backbone_item" §
-  # Run the evaluation command for the current model - with --quantize and configurations
-  torchrun --nproc_per_node=2 \
-  eval_sam_quant_model.py \
-  --dataset coco \
-  --image_root coco/val2017 \
-  --dataset_calibration sa-1b \
-  --image_root_calibration sa-1b \
-  --annotation_json_file coco/annotations/instances_val2017.json \
-  --model $model \
-  --limit_iterations 2250 \
-  --prompt_type box \
-  --backbone_version $backbone_item \
-  --quantize_W \
-  --quantize_A \
-  --export_dataframe \
-  --script_name $model
-done
-
-echo "--------- EVERYTHING COMPLETED ---------}"
