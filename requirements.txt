@@ -12,7 +12,7 @@ pycuda==2024.1
 PyYAML==6.0.1
 segment_anything==1.0
 timm==0.6.13
-TinyNeuralNetwork==0.1.0.20240129145532+5be019253f4be705388c66e3456c97bb948703d9
+git+https://github.com/alibaba/TinyNeuralNetwork.git
 torch==2.0.1
 torchinfo==1.8.0
 torchpack==0.3.1
