@@ -67,7 +67,7 @@ Left: a detailed description of how a quantization-ready model is constructed.
 Right: the details of the process of calibration and inference. 'Calibration' is the process where sample images are sent through the full-precision network, and an observer is registering the distributions of the intermediate tensors (called activations). It then calculates the optimal quantization parameters (the scale and zero-point) according to some algorithm (EMA, minmax, percentile...). After calibration, those parameters are fixed and used for actuall quantization.
 
 <p align="left">
-<img src="assets/files/quant_processes.jpg"  width="950">
+<img src="assets/files/quant_flows.jpg"  width="950">
 </p>
 
 ## Datasets
