@@ -1,6 +1,12 @@
 # Simulated Quantization of EfficientViT-SAM
 
-This repository applies simulated quantization to [EfficientViT-SAM](https://github.com/mit-han-lab/efficientvit), a state-of-the-art segmentation model. Below is an outline of results, implementation details, and how to use this framework. A word of caution: the simulation accuracy does not aggree with results obtained when deploying simulation using NVIDIA TensorRT.
+Code repo for the master's thesis ["Accelerated Segmentation with Mixed-Precision Quantization of EfficientViT-SAM"](https://lup.lub.lu.se/student-papers/search/publication/9174462), conducted in collaboration with Ericsson's device platform research team.
+
+This repo applies simulated quantization to [EfficientViT-SAM](https://github.com/mit-han-lab/efficientvit), a state-of-the-art segmentation model. Below is an outline of results, implementation details, and how to use this framework. We also deployed quantized models using Nividia's TensorRT SDK without simulation.
+
+## Abstract in plain english
+
+We modified selective layers inside the PyTorch architecture of transformer-based computer vision model, with the goal of improving speed without loosing accuracy. We failed in that aspect, as accuracy droped heavily. Our contribution to the research field was instead that we identified the specific architectural component inside the model that caused the failure, i.e. a direction for future research (fix the sensitive layer and you may succeed in speeding up the model).
 
 ## EfficientViT Applications
 EfficientViT has many applications, one of which is Segment Anything
@@ -50,6 +56,10 @@ pip install -r requirements.txt
 ```
 
 ## Overview of the simulation framework
+
+**A word of caution: the simulation accuracy does not aggree with results obtained when deploying simulation using NVIDIA TensorRT.
+**
+
 Operators __F__ are injected into the computational graph of all layers in the image encoder of EfficientViT-SAM, as per below. F takes a tensor as input, applies quantization which reduces information content, then immideately dequantize the tensor. Since quantization is lossy, the lost information is not recovered. This is meant to simmulate that the operations are carried out in some lower precision (e.g. INT8), and that the weights are low-precision.
 
 'ops.py' is the file that defines the operations. QConvLayer is a quantized convolutional layer. QLiteMLA is a quantized Attention layer using ReLU.
